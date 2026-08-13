@@ -3354,6 +3354,27 @@ summary:focus-visible {
 .cargo-options button small { color: var(--ink-4); font: 8.5px var(--mono); }
 .cargo-options button.selected small { color: var(--yellow-ink); }
 
+.cargo-add-action {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid rgba(254, 229, 0, 0.48);
+  border-radius: 8px;
+  color: #201c00;
+  background: var(--yellow);
+  font: 700 11px var(--sans);
+}
+
+.cargo-add-action:hover:not(:disabled) {
+  filter: brightness(1.04);
+}
+
+.cargo-add-action:disabled {
+  cursor: default;
+  border-color: var(--ops-line);
+  color: var(--ink-4);
+  background: rgba(var(--wash-rgb), 0.04);
+}
+
 .cargo-balance-note {
   padding: 8px 9px;
   border-left: 2px solid #64e9ff;

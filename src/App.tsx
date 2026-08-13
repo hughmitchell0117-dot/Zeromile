@@ -25,11 +25,11 @@ import { CITIES } from './lib/geo';
 import { siteLabel } from './lib/sites';
 
 const SECTIONS = [
-  { id: 'lab', n: '03', label: '시뮬레이터' },
-  { id: 'reframe', n: '02', label: '작동 방식' },
-  { id: 'driver', n: '04', label: '기사 화면' },
-  { id: 'moat', n: '05', label: '사업 가치' },
-  { id: 'method', n: '07', label: '방법론' },
+  { id: 'reframe', n: '01', label: '작동 방식' },
+  { id: 'lab', n: '02', label: '시뮬레이터' },
+  { id: 'driver', n: '03', label: '기사 화면' },
+  { id: 'moat', n: '04', label: '사업 가치' },
+  { id: 'method', n: '05', label: '방법' },
 ];
 
 /**
@@ -114,19 +114,19 @@ export default function App() {
             <div>
               <Reveal>
                 <h1 className="zm-h1 ko">
-                  빈 차를
+                  공차율로 인한
                   <br />
-                  <em>수익으로</em>
+                  모든 손실을
                   <br />
-                  바꿉니다.
+                  <em>0으로.</em>
                 </h1>
               </Reveal>
 
               <Reveal delay={140}>
                 <p className="zm-hero-lede ko">
-                  화물 한 건이 아니라 기사님의 하루를 최적화합니다. 하루가 허용하는
-                  만큼의 운송을 하나의 회차로 묶고, 출발한 차고지로 돌아오는 시각과
-                  실수령액까지 먼저 약속합니다.
+                  끊어진 편도 화물을 복귀까지 이어지는 하나의 회차로 연결합니다.
+                  공차 이동에서 새던 연료비·통행료·기사님의 시간을 수익 운행으로
+                  전환하고, 출발 전에 복귀 시각과 실수령액을 확정합니다.
                 </p>
               </Reveal>
 
@@ -185,12 +185,11 @@ export default function App() {
                 <span className="zm-head-n">01</span>
                 <div>
                   <span className="zm-kicker">The problem</span>
-                  <h2 className="ko">
-                    세 가지 문제가 <em>겹쳐</em> 있습니다.
-                  </h2>
+                  <h2 className="ko">세 가지 비효율이 운송 수익을 낮춥니다.</h2>
                   <p className="ko">
-                    하나씩 보면 각각 불편한 정도지만, 세 개가 동시에 작동하면 기사의
-                    하루 수입이 구조적으로 무너집니다.
+                    기존 화물 운송은{' '}
+                    <strong>공차 운행, 복잡한 주선 구조, 선착순 배차</strong>가 동시에
+                    발생하며 운송 효율과 기사 수익성을 떨어뜨립니다.
                   </p>
                 </div>
               </div>
@@ -234,7 +233,7 @@ export default function App() {
           <div className="zm-shell">
             <Reveal>
               <div className="zm-head">
-                <span className="zm-head-n">02</span>
+                <span className="zm-head-n">01</span>
                 <div>
                   <span className="zm-kicker">The reframe</span>
                   <h2 className="ko">
@@ -288,15 +287,13 @@ export default function App() {
           <div className="zm-shell">
             <Reveal>
               <div className="zm-head">
-                <span className="zm-head-n">03</span>
+                <span className="zm-head-n">02</span>
                 <div>
                   <span className="zm-kicker">Live operations lab</span>
-                  <h2 className="ko">
-                    운영 콘솔을 <em>그대로</em> 열어 두었습니다.
-                  </h2>
+                  <h2 className="ko">실제 운송 최적화를 직접 실행해보세요.</h2>
                   <p className="ko">
-                    왼쪽에 운행 조건을 넣고 실행하면, 브라우저 안에서 솔버가 돌고 지도와
-                    지표가 함께 움직입니다.
+                    왼쪽에서 운행 조건을 설정하고 실행하면,{' '}
+                    <strong>최적 경로와 주요 운송 지표가 실시간으로 계산됩니다.</strong>
                   </p>
                   <div className="zm-chips">
                     {LAB_CHIPS.map((chip) => (
@@ -355,16 +352,17 @@ export default function App() {
           <div className="zm-shell">
             <Reveal>
               <div className="zm-head">
-                <span className="zm-head-n">04</span>
+                <span className="zm-head-n">03</span>
                 <div>
                   <span className="zm-kicker">Driver app</span>
-                  <h2 className="ko">
-                    목록이 아니라 <em>카드 한 장</em>.
-                  </h2>
+                  <h2 className="ko">하루 운송을 한눈에.</h2>
                   <p className="ko">
-                    화물 앱을 새로고침하면서 선착순으로 잡는 화면을 없앱니다. 기사가
-                    아침에 보는 것은 오늘 하루 전체입니다 — 구간, 복귀 시각, 그리고
-                    실수령액.
+                    여러 화물을 하나씩 찾을 필요 없이,{' '}
+                    <strong>
+                      오늘의 운송 구간부터 예상 수익과 복귀 시간까지 하나의 화면에서 확인할
+                      수 있습니다.
+                    </strong>{' '}
+                    ZeroMile이 최적화한 운송 계획을 확인하고 바로 운행을 시작하세요.
                   </p>
                 </div>
               </div>
@@ -402,7 +400,7 @@ export default function App() {
           <div className="zm-shell">
             <Reveal>
               <div className="zm-head">
-                <span className="zm-head-n">05</span>
+                <span className="zm-head-n">04</span>
                 <div>
                   <span className="zm-kicker">The moat</span>
                   <h2 className="ko">
@@ -492,7 +490,7 @@ export default function App() {
           <div className="zm-shell">
             <Reveal>
               <div className="zm-head">
-                <span className="zm-head-n">07</span>
+                <span className="zm-head-n">05</span>
                 <div>
                   <span className="zm-kicker">Method &amp; confidence</span>
                   <h2 className="ko">
@@ -527,7 +525,7 @@ export default function App() {
       <footer className="zm-footer">
         <div className="zm-shell zm-footer-inner">
           <a className="zm-wordmark" href="#top">
-            <i />
+            <img className="zm-wordmark-logo" src="/zeromile-mark.png" alt="" />
             ZeroMile
           </a>
           <span className="zm-mono ko">
@@ -560,7 +558,7 @@ function Masthead({
     <nav className="zm-mast">
       <div className="zm-mast-inner">
         <a className="zm-wordmark" href="#top">
-          <i />
+          <img className="zm-wordmark-logo" src="/zeromile-mark.png" alt="" />
           ZeroMile
         </a>
 
@@ -1630,25 +1628,43 @@ const LAB_CHIPS = [
   { k: 'DATA', v: '합성 수요' },
   { k: 'SEED', v: '재현 가능' },
   { k: 'COMPUTE', v: '브라우저 로컬' },
-  { k: 'LIVE', v: '녹화 아님' },
+  { k: 'LIVE', v: '실시간 실행' },
 ];
 
 const PROBLEMS = [
   {
     k: '30–40%',
-    title: '공차율',
-    body: '짐을 싣고 한 방향으로 가고 빈 차로 돌아옵니다. 귀환 구간의 연료와 시간은 기사가 전부 부담하고 수입은 0원입니다. 기사 소득을 무너뜨리는 가장 큰 단일 요인입니다.',
+    title: '공차 운행',
+    body: (
+      <>
+        화물을 배송한 뒤 적절한 복귀 화물을 찾지 못하면 빈 차로 이동하게 됩니다. 복귀
+        구간의 <strong>연료비와 운행 시간은 비용이 되지만 추가 수익은 발생하지 않습니다.</strong>
+      </>
+    ),
   },
   {
     k: '3–4단계',
-    title: '다단계 주선',
-    body: '화주 → 주선업체 → 재주선 → 기사. 각 단계가 마진을 가져갑니다. 기사는 원 운임을 볼 수 없고, 연료·통행료를 빼고 나면 이 화물이 탈 만한지 판단할 수단이 없습니다.',
+    title: '복잡한 주선 구조',
+    body: (
+      <>
+        화주부터 기사까지 여러 주선 단계를 거치며 수수료가 발생합니다. 기사는{' '}
+        <strong>
+          실제 운임과 비용 구조를 정확히 파악하기 어려워 수익성을 판단하기 어렵습니다.
+        </strong>
+      </>
+    ),
     neutral: true,
   },
   {
-    k: '선착순',
-    title: '고함치는 게시판',
-    body: '화물 앱을 새로고침하며 먼저 누르는 사람이 가져갑니다. 상당수가 운전 중에 일어납니다. 위험하고, 동시에 단가를 바닥으로 밀어내는 경주를 강제합니다.',
+    k: '실시간 경쟁',
+    title: '선착순 중심 배차',
+    body: (
+      <>
+        기존 화물 플랫폼은 화물을 개별적으로 확인하고 빠르게 선택해야 하는 방식이
+        많습니다. 운전 중 반복적인 확인이 필요하고,{' '}
+        <strong>하루 전체 운송 경로와 수익을 계획하기 어렵습니다.</strong>
+      </>
+    ),
     neutral: true,
   },
 ];
