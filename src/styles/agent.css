@@ -89,9 +89,9 @@
   flex-direction: column;
   border-radius: 26px;
   border: 1px solid rgba(var(--wash-rgb), 0.13);
-  background: rgba(var(--scrim-rgb), 0.62);
-  backdrop-filter: blur(30px) saturate(1.5);
-  -webkit-backdrop-filter: blur(30px) saturate(1.5);
+  background: rgba(var(--scrim-rgb), 0.9);
+  backdrop-filter: blur(40px) saturate(1.5);
+  -webkit-backdrop-filter: blur(40px) saturate(1.5);
   box-shadow:
     0 1px 0 rgba(var(--wash-rgb), 0.09) inset,
     0 30px 80px -28px rgba(0, 0, 0, 0.62),

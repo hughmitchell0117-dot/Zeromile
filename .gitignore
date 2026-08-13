@@ -35,3 +35,5 @@ yarn-error.log*
 .codex/
 
 design/snapshot/**/map.json
+.vercel
+.env*
