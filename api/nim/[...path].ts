@@ -9,8 +9,14 @@
 
 const UPSTREAM = 'https://integrate.api.nvidia.com'
 
+// Reached through globalThis rather than the bare `process` global: this file
+// sits outside the app's tsconfig projects, so Vercel typechecks it without
+// @types/node loaded and a bare `process` is an unknown name there.
+type NodeEnv = { env?: Record<string, string | undefined> }
+const nodeProcess = (globalThis as typeof globalThis & { process?: NodeEnv }).process
+
 export default async function handler(request: Request): Promise<Response> {
-  const key = process.env.NIM_API_KEY?.trim()
+  const key = nodeProcess?.env?.NIM_API_KEY?.trim()
   if (!key) {
     return new Response(JSON.stringify({ error: 'NIM_API_KEY is not set' }), {
       status: 500,
