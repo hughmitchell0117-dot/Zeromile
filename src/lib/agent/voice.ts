@@ -76,6 +76,8 @@ export function useVoice({
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const wantedRef = useRef(false);
   const speakingRef = useRef(false);
+  /** Recognition is torn down, not merely ignored, while the agent talks. */
+  const pausedRef = useRef(false);
   const openRef = useRef(open);
   const pendingRef = useRef('');
   const gapRef = useRef(0);
@@ -170,11 +172,11 @@ export function useVoice({
     };
 
     recognition.onend = () => {
-      if (!wantedRef.current) return;
+      if (!wantedRef.current || pausedRef.current) return;
       // Chrome ends the session on its own after silence. Restart on the next
       // tick — restarting synchronously inside onend throws InvalidStateError.
       window.setTimeout(() => {
-        if (!wantedRef.current) return;
+        if (!wantedRef.current || pausedRef.current) return;
         try {
           recognition.start();
         } catch {
@@ -254,14 +256,43 @@ export function useVoice({
   const speakerRef = useRef<Speaker | null>(null);
   if (!speakerRef.current) speakerRef.current = new Speaker();
 
+  /*
+   * Dropping results while the agent speaks was not enough: the recogniser
+   * hears the reply through the speakers, and whatever it makes of it lands
+   * the moment the gate lifts — the agent answering itself. Echo cancellation
+   * does not help, because Chrome's recogniser captures on its own path and
+   * not through the analyser's constrained stream. So the microphone is
+   * actually shut for the duration and reopened afterwards, with a short tail
+   * so the last syllable out of the speakers does not become the first word in.
+   */
   const began = useCallback(() => {
     speakingRef.current = true;
+    pausedRef.current = true;
+    pendingRef.current = '';
+    setInterim('');
+    window.clearTimeout(gapRef.current);
+    try {
+      recognitionRef.current?.abort();
+    } catch {
+      /* not running — fine */
+    }
     setStatus('speaking');
   }, []);
 
   const ended = useCallback(() => {
     speakingRef.current = false;
     setStatus((s) => (s === 'speaking' ? 'idle' : s));
+    if (!pausedRef.current) return;
+    window.setTimeout(() => {
+      pausedRef.current = false;
+      if (!wantedRef.current) return;
+      pendingRef.current = '';
+      try {
+        recognitionRef.current?.start();
+      } catch {
+        /* already running — fine */
+      }
+    }, 450);
   }, []);
 
   /** The browser's own voice — only reached if ElevenLabs could not speak. */

@@ -11,7 +11,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AgentSession, agentConfigured, type ToolEvent } from '../lib/agent/gemini';
+import { AgentSession, agentConfigured, type ToolEvent } from '../lib/agent/llm';
 import { GREETING } from '../lib/agent/prompt';
 import { elevenConfigured } from '../lib/agent/tts';
 import { speakable, useVoice } from '../lib/agent/voice';
@@ -22,6 +22,8 @@ type Message = {
   text: string;
   tools: ToolEvent[];
   pending?: boolean;
+  /** The model is reasoning. Shown as a label — the reasoning itself is never rendered. */
+  thinking?: boolean;
   error?: boolean;
 };
 
@@ -139,8 +141,11 @@ export default function Agent({
         const answer = await sessionRef.current!.send(trimmed, {
           onText: (delta) => {
             streamed += delta;
-            patch(replyId, { text: streamed });
+            patch(replyId, { text: streamed, thinking: false });
           },
+          // The model reasons before it answers. Say so, rather than sitting on
+          // three dots — but never render the reasoning itself.
+          onThinking: () => patch(replyId, { thinking: true }),
           onTool: (event) => {
             tools.push(event);
             patch(replyId, { tools: [...tools] });
@@ -152,9 +157,15 @@ export default function Agent({
           },
           onWait: (seconds) => setWaiting(seconds),
         });
-        const final = answer || streamed;
-        patch(replyId, { text: final, pending: false, tools: [...tools] });
-        if (armedRef.current && final) speakRef.current(speakable(final));
+        // A turn that ends with tool calls and no words used to blank the
+        // bubble entirely. Say something rather than vanish.
+        const final =
+          (answer || streamed).trim() ||
+          (tools.length
+            ? '처리했어요. 화면을 확인해 주세요.'
+            : '답변을 만들지 못했어요. 다시 한 번 말씀해 주시겠어요?');
+        patch(replyId, { text: final, pending: false, thinking: false, tools: [...tools] });
+        if (armedRef.current) speakRef.current(speakable(final));
       } catch (error) {
         patch(replyId, {
           text: error instanceof Error ? error.message : '연결에 문제가 있었어요. 다시 시도해 주세요.',
@@ -298,8 +309,8 @@ export default function Agent({
         <div className="zm-agent-scroll" ref={scrollRef}>
           {!configured && (
             <p className="zm-agent-warn">
-              GEMINI API 키가 없습니다. <code>.env.local</code>에 <code>VITE_GEMINI_API_KEY</code>를 넣고 개발
-              서버를 다시 시작하세요.
+              API 키가 없습니다. <code>.env.local</code>에 <code>NIM_API_KEY</code>를 넣고 개발 서버를 다시
+              시작하세요.
             </p>
           )}
 
@@ -327,6 +338,7 @@ export default function Agent({
                   <i />
                   <i />
                   <i />
+                  {message.thinking && <em>생각하는 중</em>}
                 </p>
               ) : null}
             </div>
@@ -373,7 +385,7 @@ export default function Agent({
         <footer className="zm-agent-foot">
           <span>{supported ? 'ESC 닫기 · ⌘K 열기' : '이 브라우저는 음성 인식을 지원하지 않아요'}</span>
           <span className="zm-agent-mark">
-            GEMINI{elevenConfigured() ? ' · ELEVENLABS' : ''} · 실시간 배차 연산
+            GLM 5.2{elevenConfigured() ? ' · ELEVENLABS' : ''} · 실시간 배차 연산
           </span>
         </footer>
       </div>
