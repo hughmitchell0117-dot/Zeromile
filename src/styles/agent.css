@@ -89,7 +89,7 @@
   flex-direction: column;
   border-radius: 26px;
   border: 1px solid rgba(var(--wash-rgb), 0.13);
-  background: rgba(var(--scrim-rgb), 0.9);
+  background: rgba(var(--scrim-rgb), 0.95);
   backdrop-filter: blur(40px) saturate(1.5);
   -webkit-backdrop-filter: blur(40px) saturate(1.5);
   box-shadow:
