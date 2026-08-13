@@ -6,8 +6,9 @@ export type CargoProfile = 'general' | 'bulk' | 'cold' | 'fragile';
 
 export const LOAD_TREATMENTS = [
   '표준 팔레트 고정',
+  '가로 팔레트 고정',
   '미끄럼 방지 매트',
-  '2중 래칫 결박',
+  '2단 적층 · 래칫 결박',
   '에어쿠션 완충',
   '보냉커버 이중 적용',
   '냉기순환 간격 확보',
@@ -35,6 +36,8 @@ export type LoadingPlanItem = {
   secureMinutes: number;
   placementReason: string;
   dimensions: CargoDimensions;
+  orientation: 'longitudinal' | 'transverse';
+  stacked: boolean;
 };
 
 type LoadOptionTraits = {
@@ -42,6 +45,8 @@ type LoadOptionTraits = {
   low: boolean;
   airflow: boolean;
   fastAccess: boolean;
+  orientation: LoadingPlanItem['orientation'];
+  stacked: boolean;
   secureMinutes: number;
 };
 
@@ -105,7 +110,7 @@ export function buildLoadingPlan(
 
   return tour.legs.map((leg, index) => {
     const profile = cargoProfile(leg.load.goods);
-    const selectedOption = loadOptions[leg.load.id] ?? defaultLoadOption(profile, leg.load.tons);
+    const selectedOption = loadOptions[leg.load.id] ?? defaultLoadTreatment(profile, leg.load.tons);
     const traits = loadOptionTraits(selectedOption, profile);
     const deckSide = side.get(leg.load.id) ?? 'center';
     const zone = index === 0 ? 'rear' : index === count - 1 ? 'front' : 'middle';
@@ -125,15 +130,22 @@ export function buildLoadingPlan(
       secureMinutes: traits.secureMinutes,
       placementReason: placementReason(traits, deckSide, zone, leg.load.tons),
       dimensions: cargoDimensions(leg.load),
+      orientation: traits.orientation,
+      stacked: traits.stacked,
     };
   });
 }
 
-function defaultLoadOption(profile: CargoProfile, tons: number): string {
+export function defaultLoadTreatment(profile: CargoProfile, tons: number): LoadTreatment {
   if (profile === 'cold') return '냉기순환 간격 확보';
   if (profile === 'fragile') return '에어쿠션 완충';
   if (profile === 'bulk' || tons >= 4) return '미끄럼 방지 매트';
   return '표준 팔레트 고정';
+}
+
+export function loadTreatmentOptions(load: Load): LoadTreatment[] {
+  const recommended = defaultLoadTreatment(cargoProfile(load.goods), load.tons);
+  return [recommended, ...LOAD_TREATMENTS.filter((option) => option !== recommended)];
 }
 
 /** Representative bundled footprint used by the digital twin, in metres. */
@@ -165,7 +177,9 @@ function loadOptionTraits(option: string, profile: CargoProfile): LoadOptionTrai
     low: option.includes('저상') || option.includes('매트') || profile === 'bulk',
     airflow: option.includes('냉기순환'),
     fastAccess: option.includes('후문') || option.includes('우선'),
-    secureMinutes: option.includes('2중')
+    orientation: option.includes('가로') ? 'transverse' : 'longitudinal',
+    stacked: option.includes('2단'),
+    secureMinutes: option.includes('2단')
       ? 18
       : option.includes('완충') || option.includes('보냉') || option.includes('무진동')
         ? 14
@@ -183,6 +197,8 @@ function placementReason(
 ): string {
   const position = `${zone === 'rear' ? '후문' : zone === 'front' ? '전방' : '중앙부'} · ${side === 'center' ? '차축 중앙' : side === 'left' ? '좌측' : '우측'}`;
   if (traits.airflow) return `${position}, 냉기 통로를 비워 온도 편차 최소화`;
+  if (traits.stacked) return `${position}, 2단 적층을 래칫으로 묶어 바닥 면적 확보`;
+  if (traits.orientation === 'transverse') return `${position}, 가로 회전해 측면 하역 접근성 확보`;
   if (traits.low || tons >= 4) return `${position}, 중량물을 바닥에 고정해 무게중심 하강`;
   if (traits.fastAccess) return `${position}, 하역 접근성을 우선하되 목적지 역순 유지`;
   return `${position}, 좌우 누적중량과 하역 접근성 동시 최적화`;

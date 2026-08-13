@@ -33,9 +33,8 @@ import { computeReach, dutyBudget } from '../lib/reach';
 import {
   buildLoadingPlan,
   canCarryLoad,
-  cargoProfile,
   isCompatibleSelection,
-  LOAD_TREATMENTS,
+  loadTreatmentOptions,
   type CargoCondition,
   type LoadingPlanItem,
   type VehicleType,
@@ -333,8 +332,6 @@ export default function DemoConsole({
   const [hoveredDriverId, setHoveredDriverId] = useState<number | null>(null);
   const [selectedMapLoadId, setSelectedMapLoadId] = useState<number | null>(null);
   const [loadOptions, setLoadOptions] = useState<Record<number, string>>({});
-  const [simulationOptions, setSimulationOptions] = useState<Record<number, string>>({});
-  const [simulationRunId, setSimulationRunId] = useState(0);
   const [pendingOptimize, setPendingOptimize] = useState(false);
 
   const { drivers, loads, baseline, baseStats, locked } = useMemo(() => {
@@ -507,8 +504,6 @@ export default function DemoConsole({
     setDetailDriverId(null);
     setSelectedMapLoadId(null);
     setLoadOptions({});
-    setSimulationOptions({});
-    setSimulationRunId(0);
 
     sigRef.current = new Map(
       baseline.map((t) => [t.driver.id, { legs: t.legs.length, net: t.net }]),
@@ -666,8 +661,6 @@ export default function DemoConsole({
     setDetailDriverId(null);
     setSelectedMapLoadId(null);
     setLoadOptions({});
-    setSimulationOptions({});
-    setSimulationRunId(0);
     setFeed([]);
     setHistory([]);
     setTours(baseline);
@@ -688,8 +681,6 @@ export default function DemoConsole({
     setDetailDriverId(null);
     setSelectedMapLoadId(null);
     setLoadOptions({});
-    setSimulationOptions({});
-    setSimulationRunId(0);
     setFeed([]);
     setHistory([]);
     setTours(baseline);
@@ -1419,7 +1410,7 @@ export default function DemoConsole({
             {selectedLoadingItem && (
               <CargoLoadDetail
                 item={selectedLoadingItem}
-                selectedOption={loadOptions[selectedLoadingItem.load.id]}
+                selectedOption={selectedLoadingItem.selectedOption}
                 truckTons={routeDraft.constraints.truckTons}
                 totalTons={loadingPlan.reduce((sum, item) => sum + item.load.tons, 0)}
                 onSelectOption={(option) =>
@@ -1637,16 +1628,12 @@ export default function DemoConsole({
               tour={appliedRoute && routeChanged ? null : loadingTour}
               phase={phase}
               cityName={ko}
-              loadOptions={simulationOptions}
+              loadOptions={loadOptions}
               focusLoadId={selectedMapLoadId}
-              simulationRunId={simulationRunId}
-              configuredCount={Object.keys(loadOptions).length}
-              hasDraftChanges={
-                JSON.stringify(loadOptions) !== JSON.stringify(simulationOptions)
-              }
-              onRunSimulation={() => {
-                setSimulationOptions({ ...loadOptions });
-                setSimulationRunId((current) => current + 1);
+              onFocusLoad={setSelectedMapLoadId}
+              onSelectLoadOption={(loadId, option) => {
+                setSelectedMapLoadId(loadId);
+                setLoadOptions((current) => ({ ...current, [loadId]: option }));
               }}
               viewportGrip={<div {...paneGrip('truck')} />}
             />
@@ -1810,7 +1797,7 @@ function CargoLoadDetail({
   onSelectOption: (option: string) => void;
   onClose: () => void;
 }) {
-  const options = cargoLoadOptions(item.load);
+  const options = loadTreatmentOptions(item.load);
   const side = item.deckSide === 'center' ? '차축 중앙' : item.deckSide === 'left' ? '좌측 하단' : '우측 하단';
   return (
     <aside className="cargo-detail" aria-label={`${item.load.goods} 화물 상세정보`}>
@@ -1853,18 +1840,6 @@ function CargoLoadDetail({
       </p>
     </aside>
   );
-}
-
-function cargoLoadOptions(load: Load): string[] {
-  const recommended =
-    cargoProfile(load.goods) === 'cold'
-      ? '냉기순환 간격 확보'
-      : cargoProfile(load.goods) === 'fragile'
-        ? '에어쿠션 완충'
-        : cargoProfile(load.goods) === 'bulk' || load.tons >= 4
-          ? '미끄럼 방지 매트'
-          : '표준 팔레트 고정';
-  return [recommended, ...LOAD_TREATMENTS.filter((option) => option !== recommended)];
 }
 
 function LocationField({

@@ -878,10 +878,11 @@ section {
 
 .phone-screen {
   position: relative;
+  height: 660px;
+  min-height: 0;
   border-radius: 36px;
   background: #06070a;
   overflow: hidden;
-  min-height: 660px;
   display: flex;
   flex-direction: column;
 }
@@ -899,6 +900,7 @@ section {
 }
 
 .phone-status {
+  flex: none;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -909,16 +911,42 @@ section {
 }
 
 .phone-head {
+  flex: none;
   padding: 14px 20px 12px;
   border-bottom: 1px solid var(--line);
 }
 
 .phone-scroll {
   flex: 1;
+  min-height: 0;
   padding: 18px 18px 12px;
   display: flex;
   flex-direction: column;
   gap: 14px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(254, 229, 0, 0.42) transparent;
+  -webkit-overflow-scrolling: touch;
+}
+
+.phone-scroll::-webkit-scrollbar {
+  width: 5px;
+}
+
+.phone-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.phone-scroll::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(254, 229, 0, 0.38);
+}
+
+.phone-scroll:focus-visible {
+  outline: 1px solid rgba(254, 229, 0, 0.45);
+  outline-offset: -2px;
 }
 
 .loop-card {
@@ -1045,6 +1073,7 @@ section {
 }
 
 .phone-actions {
+  flex: none;
   display: grid;
   grid-template-columns: 1.55fr 1fr;
   gap: 10px;
@@ -2577,6 +2606,12 @@ summary:focus-visible {
   background: rgba(254, 229, 0, 0.045);
 }
 
+.load-manifest li.selected button {
+  border-color: rgba(254, 229, 0, 0.42);
+  background: rgba(254, 229, 0, 0.075);
+  box-shadow: inset 2px 0 0 var(--yellow);
+}
+
 .load-manifest button:disabled {
   cursor: default;
   opacity: 0.68;
@@ -2616,6 +2651,89 @@ summary:focus-visible {
 .load-empty span { font-size: 9.5px; }
 .load-empty.invalid { border-color: rgba(240, 103, 79, 0.28); background: var(--empty-dim); }
 .load-empty.invalid span { color: #ff9a88; }
+
+.truck-load-method {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid rgba(100, 233, 255, 0.16);
+  border-radius: 9px;
+  background: rgba(100, 233, 255, 0.035);
+}
+
+.truck-load-method-head {
+  display: grid;
+  gap: 2px;
+}
+
+.truck-load-method-head > span {
+  color: #64e9ff;
+  font: 7.5px var(--mono);
+  letter-spacing: 0.09em;
+}
+
+.truck-load-method-head b {
+  color: var(--ink);
+  font: 600 10.5px var(--sans);
+}
+
+.truck-load-method-head small,
+.truck-load-method-note {
+  color: var(--ink-4);
+  font-size: 8.5px;
+  line-height: 1.45;
+}
+
+.truck-load-method-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.truck-load-method-options button {
+  display: grid;
+  grid-template-columns: 6px minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 7px;
+  border: 1px solid rgba(var(--wash-rgb), 0.08);
+  border-radius: 7px;
+  color: var(--ink-3);
+  background: rgba(var(--wash-rgb), 0.025);
+  font: 8.5px var(--sans);
+  text-align: left;
+}
+
+.truck-load-method-options button i {
+  width: 5px;
+  height: 5px;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+}
+
+.truck-load-method-options button span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.truck-load-method-options button.selected {
+  border-color: rgba(254, 229, 0, 0.38);
+  color: var(--yellow-ink);
+  background: rgba(254, 229, 0, 0.08);
+}
+
+.truck-load-method-options button.selected i {
+  border-color: var(--yellow);
+  background: var(--yellow);
+  box-shadow: 0 0 6px rgba(254, 229, 0, 0.45);
+}
+
+.truck-load-method-options button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
 
 .truck-rule {
   padding-left: 8px;
