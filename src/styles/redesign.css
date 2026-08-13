@@ -1358,3 +1358,484 @@ body {
 .ops .progress > span {
   transition: width 0.2s linear;
 }
+
+/* ── Methodology dashboard ────────────────────────────────────────────
+ *
+ * Seven panels behind the `시뮬레이션 방법론` disclosure, all of them drawing
+ * the run the visitor just watched. Everything animates from the `.is-live`
+ * class the <details> toggle writes, so nothing plays while the section is
+ * folded away. Flat fills and hairline rules only — the house no-glow rule
+ * holds here too.
+ *
+ * Type: figures are mono with tabular numerals so a counting number doesn't
+ * shift the layout under itself; the single hero figure per panel is serif,
+ * because that is the page's voice for a number worth reading.
+ * -------------------------------------------------------------------- */
+
+.methodology-summary .mth {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: 1px;
+  background: var(--line);
+  border-top: 1px solid var(--line);
+}
+
+.mth-card {
+  background: var(--bg-2);
+  padding: 22px 24px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+.mth-c4 { grid-column: span 4; }
+.mth-c5 { grid-column: span 5; }
+.mth-c7 { grid-column: span 7; }
+
+.mth-card > header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.mth-n {
+  font: 700 10px/1 var(--mono);
+  letter-spacing: 0.1em;
+  color: var(--on-signal);
+  background: var(--signal);
+  padding: 5px 6px 4px;
+  border-radius: 3px;
+}
+
+.mth-card > header b {
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: -0.015em;
+  color: var(--ink);
+}
+
+.mth-card > header small {
+  font: 11px/1.3 var(--mono);
+  color: var(--ink-3);
+  margin-left: auto;
+  text-align: right;
+  max-width: 46%;
+}
+
+.mth-note {
+  margin-top: auto;
+  padding-top: 4px;
+  font-size: 12.5px;
+  line-height: 1.75;
+  color: var(--ink-3);
+  word-break: keep-all;
+}
+
+/* ── Hero figure ─────────────────────────────────────────────────────── */
+
+.mth-hero {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+.mth-hero em {
+  font: 400 clamp(3rem, 5vw, 4.2rem) / 0.82 var(--serif);
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.03em;
+  color: var(--ink);
+}
+
+.mth-hero-sm em { font-size: clamp(2.3rem, 3.6vw, 3.1rem); }
+
+.mth-hero > span {
+  display: grid;
+  gap: 3px;
+  padding-bottom: 5px;
+  font: 600 15px var(--mono);
+  color: var(--signal-ink);
+}
+
+.mth-hero > span small {
+  font: 11.5px var(--sans);
+  font-weight: 400;
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+
+/* ── Shared horizontal bar ───────────────────────────────────────────── */
+
+.mth-track {
+  position: relative;
+  height: 14px;
+  background: var(--panel-2);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.mth-track > i,
+.mth-track > u {
+  position: absolute;
+  inset: 0 auto 0 0;
+  display: block;
+  width: 0;
+  height: 100%;
+  background: var(--ink);
+  border-radius: 2px;
+}
+
+/* The accepted-moves overlay rides on top of the proposed bar. */
+.mth-track > u { background: var(--signal); }
+
+.mth.is-live .mth-track > i,
+.mth.is-live .mth-track > u {
+  animation: mth-grow 0.95s cubic-bezier(0.16, 0.84, 0.3, 1) var(--delay, 0s) forwards;
+}
+
+@keyframes mth-grow {
+  from { width: 0; }
+  to { width: var(--to); }
+}
+
+/* 01 · 공차율 */
+.mth-vs { display: grid; gap: 14px; }
+
+.mth-vs label {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 7px;
+}
+
+.mth-vs label span { font-size: 12.5px; color: var(--ink-2); }
+
+.mth-vs label b {
+  font: 600 14px var(--mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+
+.mth-track > i.is-empty { background: var(--empty); }
+.mth-track > i.is-signal { background: var(--signal); }
+
+/* 02 · 수렴 곡선 */
+.mth-curve {
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.mth-line {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+}
+
+.mth.is-live .mth-line-net { animation: mth-draw 1.8s ease-out forwards; }
+.mth.is-live .mth-line-empty { animation: mth-draw 1.8s 0.15s ease-out forwards; }
+
+@keyframes mth-draw { to { stroke-dashoffset: 0; } }
+
+.mth-ax {
+  font: 10px var(--mono);
+  fill: var(--ink-4);
+}
+
+.mth-legend {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+  font-size: 11.5px;
+}
+
+.mth-legend span { display: flex; align-items: center; gap: 7px; color: var(--ink-3); }
+
+.mth-legend span b {
+  font: 600 12.5px var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.mth-legend span::before {
+  content: '';
+  width: 15px;
+  height: 3px;
+  border-radius: 2px;
+  background: currentColor;
+  flex: none;
+}
+
+.mth-legend .lg-ink::before { background: var(--ink); }
+.mth-legend .lg-ink b { color: var(--ink); }
+.mth-legend .lg-empty::before { background: var(--empty); }
+.mth-legend .lg-empty b { color: var(--empty); }
+.mth-legend .lg-mute::before { background: var(--panel-2); box-shadow: inset 0 0 0 1px var(--line); }
+
+/* 03 · 회차 길이 */
+.mth-cols {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 10px;
+  align-items: end;
+  height: 148px;
+}
+
+.mth-cols > div {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  align-items: end;
+  gap: 7px;
+  height: 100%;
+  text-align: center;
+}
+
+.mth-cols em {
+  font: 600 12px var(--mono);
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-2);
+}
+
+.mth-cols i {
+  display: block;
+  align-self: end;
+  height: 0;
+  background: var(--panel-2);
+  border-top: 2px solid var(--ink-3);
+  border-radius: 2px 2px 0 0;
+}
+
+.mth-cols i.is-peak {
+  background: var(--signal);
+  border-top-color: var(--ink);
+}
+
+.mth.is-live .mth-cols i {
+  animation: mth-rise 0.85s cubic-bezier(0.16, 0.84, 0.3, 1) var(--delay, 0s) forwards;
+}
+
+@keyframes mth-rise {
+  from { height: 0; }
+  to { height: var(--to); }
+}
+
+.mth-cols span { font: 12px var(--mono); color: var(--ink-3); }
+
+/* 04 · 제약 게이지 */
+.mth-dials {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.mth-dial { margin: 0; display: grid; justify-items: center; gap: 10px; }
+.mth-dial svg { width: 100%; max-width: 108px; height: auto; }
+
+.mth-sweep { stroke-dasharray: 0 var(--ring); }
+
+.mth.is-live .mth-sweep {
+  animation: mth-sweep 1.25s cubic-bezier(0.16, 0.84, 0.3, 1) var(--delay, 0s) forwards;
+}
+
+@keyframes mth-sweep {
+  to { stroke-dasharray: var(--dash); }
+}
+
+.mth-dial figcaption { text-align: center; display: grid; gap: 3px; }
+
+.mth-dial b {
+  font: 600 19px var(--mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+}
+
+.mth-dial b span { font-size: 11.5px; font-weight: 400; color: var(--ink-4); }
+.mth-dial small { font-size: 12px; color: var(--ink-3); }
+
+/* 05 · km당 손익 · 06 · 이웃 연산 */
+.mth-fall,
+.mth-ops { display: grid; gap: 11px; }
+
+.mth-fall > div,
+.mth-ops > div {
+  display: grid;
+  grid-template-columns: 64px 1fr 58px;
+  align-items: center;
+  gap: 12px;
+}
+
+.mth-ops > div { grid-template-columns: 96px 1fr 46px; }
+
+.mth-fall label { font-size: 12.5px; color: var(--ink-2); }
+
+.mth-ops label { display: grid; line-height: 1.3; }
+.mth-ops code { font: 600 11.5px var(--mono); color: var(--ink); }
+.mth-ops label span { font-size: 10.5px; color: var(--ink-4); }
+
+.mth-fall b,
+.mth-ops b {
+  font: 600 13.5px var(--mono);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  color: var(--ink);
+}
+
+.fall-in .mth-track > i { background: var(--ink); }
+.fall-out .mth-track > i { background: var(--empty); }
+.fall-out b { color: var(--empty); }
+.fall-net .mth-track > i { background: var(--signal); }
+.fall-net b { color: var(--signal-ink); }
+
+.fall-net {
+  border-top: 1px solid var(--line);
+  margin-top: 3px;
+  padding-top: 12px;
+}
+
+.fall-net label { color: var(--ink); font-weight: 600; }
+
+.mth-ops .mth-track { background: var(--panel-2); }
+.mth-ops .mth-track > i { background: var(--line-2); }
+
+/* 07 · 하루가 채워지는 모양 */
+.mth-heat { display: grid; gap: 12px; }
+.heat-grid { display: grid; gap: 4px; }
+
+.heat-row {
+  display: grid;
+  grid-template-columns: 62px repeat(8, 1fr);
+  gap: 4px;
+  align-items: center;
+}
+
+.heat-label {
+  font: 11.5px var(--mono);
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+
+.heat-row > i {
+  display: block;
+  height: 26px;
+  border-radius: 3px;
+  background: var(--signal);
+  transform: scale(0.35);
+  opacity: 0;
+}
+
+.mth.is-live .heat-row > i {
+  animation: mth-pop 0.4s cubic-bezier(0.16, 0.84, 0.3, 1) var(--delay, 0s) forwards;
+}
+
+@keyframes mth-pop {
+  to { transform: scale(1); opacity: 1; }
+}
+
+.heat-row > i[data-v='0'] { background: var(--panel-2); }
+.heat-row > i[data-v='1'] { background: color-mix(in srgb, var(--signal) 20%, transparent); }
+.heat-row > i[data-v='2'] { background: color-mix(in srgb, var(--signal) 36%, transparent); }
+.heat-row > i[data-v='3'] { background: color-mix(in srgb, var(--signal) 54%, transparent); }
+.heat-row > i[data-v='4'] { background: color-mix(in srgb, var(--signal) 72%, transparent); }
+.heat-row > i[data-v='5'] { background: color-mix(in srgb, var(--signal) 88%, transparent); }
+.heat-row > i[data-v='6'] { background: var(--signal); }
+
+.heat-axis em {
+  font: 11px var(--mono);
+  font-style: normal;
+  color: var(--ink-4);
+  text-align: center;
+}
+
+.heat-key {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font: 11px var(--mono);
+  color: var(--ink-4);
+}
+
+.heat-key i {
+  width: 18px;
+  height: 10px;
+  border-radius: 2px;
+  background: var(--signal);
+}
+
+.heat-key i[data-v='0'] { background: var(--panel-2); }
+.heat-key i[data-v='1'] { background: color-mix(in srgb, var(--signal) 20%, transparent); }
+.heat-key i[data-v='2'] { background: color-mix(in srgb, var(--signal) 36%, transparent); }
+.heat-key i[data-v='3'] { background: color-mix(in srgb, var(--signal) 54%, transparent); }
+.heat-key i[data-v='4'] { background: color-mix(in srgb, var(--signal) 72%, transparent); }
+.heat-key i[data-v='5'] { background: color-mix(in srgb, var(--signal) 88%, transparent); }
+
+/* Before a solve there is nothing real to draw, so the method is stated. */
+.mth-idle {
+  padding: 22px 24px 24px;
+  background: var(--bg-2);
+  border-top: 1px solid var(--line);
+}
+
+.mth-idle-lede {
+  font-size: 13.5px;
+  line-height: 1.7;
+  color: var(--ink-2);
+  padding-bottom: 16px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid var(--line);
+  word-break: keep-all;
+}
+
+.mth-idle-lede b {
+  color: var(--ink);
+  box-shadow: inset 0 -0.55em var(--yellow-dim);
+}
+
+.mth-idle-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 20px;
+}
+
+.mth-idle-grid b { font-size: 13px; color: var(--ink); }
+.mth-idle-grid p {
+  margin-top: 7px;
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: var(--ink-3);
+  word-break: keep-all;
+}
+
+@media (max-width: 1080px) {
+  .mth-c4,
+  .mth-c5,
+  .mth-c7 { grid-column: span 6; }
+
+  .mth-idle-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (max-width: 760px) {
+  .mth-c4,
+  .mth-c5,
+  .mth-c7 { grid-column: span 12; }
+
+  .mth-card { padding: 20px; }
+  .heat-row { grid-template-columns: 52px repeat(8, 1fr); }
+  .heat-row > i { height: 20px; }
+  .mth-idle-grid { grid-template-columns: 1fr; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mth.is-live .mth-track > i,
+  .mth.is-live .mth-track > u,
+  .mth.is-live .mth-cols i,
+  .mth.is-live .mth-sweep,
+  .mth.is-live .heat-row > i,
+  .mth.is-live .mth-line {
+    animation-duration: 1ms;
+    animation-delay: 0ms;
+  }
+}
