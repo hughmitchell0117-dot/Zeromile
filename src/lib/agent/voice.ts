@@ -255,6 +255,8 @@ export function useVoice({
   /* ── Speaking ──────────────────────────────────────────────────────── */
   const speakerRef = useRef<Speaker | null>(null);
   if (!speakerRef.current) speakerRef.current = new Speaker();
+  /** Resolver for the current speakAsync, if anything is waiting on it. */
+  const doneRef = useRef<(() => void) | null>(null);
 
   /*
    * Dropping results while the agent speaks was not enough: the recogniser
@@ -282,6 +284,13 @@ export function useVoice({
   const ended = useCallback(() => {
     speakingRef.current = false;
     setStatus((s) => (s === 'speaking' ? 'idle' : s));
+
+    // Whoever is waiting on this line finishing gets released here, before the
+    // microphone comes back — so the next thing said is never the tail of this.
+    const waiter = doneRef.current;
+    doneRef.current = null;
+    waiter?.();
+
     if (!pausedRef.current) return;
     window.setTimeout(() => {
       pausedRef.current = false;
@@ -336,9 +345,32 @@ export function useVoice({
     ended();
   }, [ended]);
 
+  /**
+   * Speak, and resolve when the line is actually finished. The scripted
+   * walkthrough uses this to time the next exchange — without it the follow-up
+   * lands on top of the reply. Resolves immediately when there is nothing to
+   * say, and is capped so a failed utterance can never wedge the sequence.
+   */
+  const speakAsync = useCallback(
+    (text: string) =>
+      new Promise<void>((resolve) => {
+        if (!text.trim()) return resolve();
+        let settled = false;
+        const finish = () => {
+          if (settled) return;
+          settled = true;
+          resolve();
+        };
+        doneRef.current = finish;
+        speak(text);
+        setTimeout(finish, 30_000);
+      }),
+    [speak],
+  );
+
   useEffect(() => stopSpeaking, [stopSpeaking]);
 
-  return { status, interim, levelRef, speak, stopSpeaking, supported: speechSupported() };
+  return { status, interim, levelRef, speak, speakAsync, stopSpeaking, supported: speechSupported() };
 }
 
 /**

@@ -11,7 +11,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AgentSession, agentConfigured, type ToolEvent } from '../lib/agent/llm';
+import { ScriptedSession, type ToolEvent } from '../lib/agent/script';
 import { GREETING } from '../lib/agent/prompt';
 import { elevenConfigured } from '../lib/agent/tts';
 import { speakable, useVoice } from '../lib/agent/voice';
@@ -50,10 +50,9 @@ const TOOL_LABELS: Record<string, string> = {
 };
 
 const SUGGESTIONS = [
-  '지금 부산이고 의왕 차고지로 돌아가요',
-  '이 회차 하면 얼마 남아요?',
+  '지금 부산신항이고 이천 차고지로 돌아가요',
+  '오늘 하루 통째로 묶어주세요',
   '단건으로 뛰는 것보다 얼마나 나아요?',
-  '짐은 어떤 순서로 실어요?',
 ];
 
 export function AgentLauncher({
@@ -99,7 +98,7 @@ export default function Agent({
   const [waiting, setWaiting] = useState(0);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
 
-  const sessionRef = useRef<AgentSession | null>(null);
+  const sessionRef = useRef<ScriptedSession | null>(null);
   const idRef = useRef(0);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -107,7 +106,7 @@ export default function Agent({
   const armedRef = useRef(armed);
   armedRef.current = armed;
 
-  if (!sessionRef.current) sessionRef.current = new AgentSession();
+  if (!sessionRef.current) sessionRef.current = new ScriptedSession();
 
   const push = useCallback((message: Omit<Message, 'id'>) => {
     const id = ++idRef.current;
@@ -121,15 +120,14 @@ export default function Agent({
     );
   }, []);
 
-  /* ── Talking to Gemini ─────────────────────────────────────────────── */
-  const speakRef = useRef<(text: string) => void>(() => {});
+  /* ── Running the exchange ──────────────────────────────────────────── */
+  const speakRef = useRef<(text: string) => Promise<void>>(async () => {});
 
-  const send = useCallback(
+  /** One exchange: the driver's line in, the agent's line and actions out. */
+  const turn = useCallback(
     async (text: string) => {
       const trimmed = text.trim();
-      if (!trimmed || busyRef.current) return;
-      busyRef.current = true;
-      setBusy(true);
+      if (!trimmed) return;
       setDraft('');
 
       push({ role: 'user', text: trimmed, tools: [] });
@@ -147,7 +145,7 @@ export default function Agent({
           // three dots — but never render the reasoning itself.
           onThinking: () => patch(replyId, { thinking: true }),
           onTool: (event) => {
-            tools.push(event);
+            tools.push({ ...event });
             patch(replyId, { tools: [...tools] });
           },
           onToolResult: (event) => {
@@ -157,28 +155,50 @@ export default function Agent({
           },
           onWait: (seconds) => setWaiting(seconds),
         });
-        // A turn that ends with tool calls and no words used to blank the
-        // bubble entirely. Say something rather than vanish.
-        const final =
-          (answer || streamed).trim() ||
-          (tools.length
-            ? '처리했어요. 화면을 확인해 주세요.'
-            : '답변을 만들지 못했어요. 다시 한 번 말씀해 주시겠어요?');
+        const final = (answer || streamed).trim() || '처리했어요. 화면을 확인해 주세요.';
         patch(replyId, { text: final, pending: false, thinking: false, tools: [...tools] });
-        if (armedRef.current) speakRef.current(speakable(final));
+        // Waited on, not fired and forgotten: the next line must not start
+        // until this one has finished being said.
+        if (armedRef.current) await speakRef.current(speakable(final));
       } catch (error) {
         patch(replyId, {
           text: error instanceof Error ? error.message : '연결에 문제가 있었어요. 다시 시도해 주세요.',
           pending: false,
           error: true,
         });
+      }
+    },
+    [patch, push],
+  );
+
+  /**
+   * A message from the driver, plus everything that follows from it. The
+   * exchange keeps going on its own while the script has a next line, with a
+   * beat of quiet between turns so it reads as a conversation rather than a
+   * transcript being pasted in.
+   */
+  const send = useCallback(
+    async (text: string) => {
+      if (busyRef.current) return;
+      busyRef.current = true;
+      setBusy(true);
+      try {
+        await turn(text);
+        let follow = sessionRef.current?.followUp ?? null;
+        while (follow) {
+          await new Promise((resolve) => setTimeout(resolve, 900));
+          const next = follow;
+          follow = null;
+          await turn(next);
+          follow = sessionRef.current?.followUp ?? null;
+        }
       } finally {
         busyRef.current = false;
         setBusy(false);
         setWaiting(0);
       }
     },
-    [patch, push],
+    [turn],
   );
 
   /* ── Voice ─────────────────────────────────────────────────────────── */
@@ -190,13 +210,13 @@ export default function Agent({
     [onOpen, send],
   );
 
-  const { status, interim, levelRef, speak, stopSpeaking, supported } = useVoice({
+  const { status, interim, levelRef, speak, speakAsync, stopSpeaking, supported } = useVoice({
     armed,
     open,
     onWake: handleWake,
     onUtterance: (text) => void send(text),
   });
-  speakRef.current = speak;
+  speakRef.current = speakAsync;
 
   /* ── Panel behaviour ───────────────────────────────────────────────── */
   const greetedRef = useRef(false);
@@ -269,8 +289,6 @@ export default function Agent({
 
   if (!open) return null;
 
-  const configured = agentConfigured();
-
   return (
     <div className="zm-agent-layer" role="dialog" aria-label="제로마일 배차 도우미">
       <div
@@ -307,13 +325,6 @@ export default function Agent({
         </header>
 
         <div className="zm-agent-scroll" ref={scrollRef}>
-          {!configured && (
-            <p className="zm-agent-warn">
-              API 키가 없습니다. <code>.env.local</code>에 <code>NIM_API_KEY</code>를 넣고 개발 서버를 다시
-              시작하세요.
-            </p>
-          )}
-
           {messages.map((message) => (
             <div key={message.id} className={`zm-agent-msg ${message.role}${message.error ? ' err' : ''}`}>
               {message.tools.length > 0 && (
