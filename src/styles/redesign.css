@@ -1,0 +1,1033 @@
+/* ── ZEROMILE · redesign layer ────────────────────────────────────────────
+ *
+ * A second skin over the original design system. It does two jobs:
+ *
+ *   1. Re-tokenises `index.css` — palette, radii, type — so the console, map
+ *      and driver phone inherit the new look without being rewritten.
+ *   2. Owns the page shell (`.zm-*`): a ruled, printed dispatch-sheet layout
+ *      instead of the old glassy dark landing page.
+ *
+ * House rules: no glow, no bloom, no blurred drop shadows. Depth comes from
+ * hard rules and flat offset blocks, the way ink on paper does it.
+ * ---------------------------------------------------------------------- */
+
+/* ── Tokens ──────────────────────────────────────────────────────────── */
+
+/*
+ * Paper is the default now; carbon is the alternate. Both selectors carry the
+ * same block on purpose — index.css declares its own `:root[data-theme='light']`
+ * palette, and a bare `:root` here would lose to it on specificity.
+ */
+:root,
+:root[data-theme='light'] {
+  --bg: #ece8dc;
+  --bg-2: #e4dfd0;
+  --bg-3: #d8d2c0;
+
+  --panel: rgba(18, 17, 13, 0.028);
+  --panel-2: rgba(18, 17, 13, 0.06);
+  --line: rgba(18, 17, 13, 0.16);
+  --line-2: rgba(18, 17, 13, 0.34);
+
+  --ink: #12110d;
+  --ink-2: #3f3c33;
+  --ink-3: #676356;
+  --ink-4: #8d8878;
+
+  /* One signal colour, used sparingly and never as a wash. */
+  --signal: #ff3d14;
+  --signal-2: #d92f0c;
+  --yellow: #ff3d14;
+  --yellow-2: #ff6a45;
+  --yellow-dim: rgba(255, 61, 20, 0.12);
+  --yellow-ink: #c92c08;
+  --yellow-ink-2: #a52405;
+  --blue: #1d4ed8;
+  --blue-2: #2563eb;
+  --blue-ink: #1d4ed8;
+  --blue-dim: rgba(29, 78, 216, 0.1);
+
+  --green: #0b7a52;
+  --gold: #9a6b00;
+  --empty: #b03a1c;
+  --empty-dim: rgba(176, 58, 28, 0.12);
+
+  /* Freight ink on the map: loaded legs are ink, deadhead is faded pencil. */
+  --flow-loaded: #14130f;
+  --flow-empty: #a29c8a;
+
+  --sans: 'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont,
+    'Apple SD Gothic Neo', 'Segoe UI', Roboto, sans-serif;
+  --mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  --serif: 'Instrument Serif', 'Times New Roman', serif;
+
+  /* Flat by decree — the old system was all 16–34px pills. */
+  --r-sm: 0px;
+  --r: 0px;
+  --r-lg: 0px;
+  --r-xl: 0px;
+
+  --max: 1320px;
+  --rail: 78px;
+  --pad: clamp(18px, 4vw, 34px);
+  --section: clamp(64px, 8vw, 108px);
+
+  --wash-rgb: 18, 17, 13;
+  --well-rgb: 255, 255, 255;
+  --scrim-rgb: 236, 232, 220;
+  --cyan-ink: #0b6d8c;
+  color-scheme: light;
+}
+
+/* Carbon — the alternate skin. Same ink logic, inverted stock. */
+:root[data-theme='dark'] {
+  --bg: #0d0d0c;
+  --bg-2: #141412;
+  --bg-3: #1c1b18;
+
+  --panel: rgba(255, 255, 255, 0.03);
+  --panel-2: rgba(255, 255, 255, 0.06);
+  --line: rgba(255, 255, 255, 0.16);
+  --line-2: rgba(255, 255, 255, 0.34);
+
+  --ink: #f4f1e6;
+  --ink-2: #b6b2a3;
+  --ink-3: #85806f;
+  --ink-4: #5c584c;
+
+  --signal: #ff4a22;
+  --yellow: #ff4a22;
+  --yellow-2: #ff7a55;
+  --yellow-ink: #ff6a3f;
+  --yellow-ink-2: #ff8a67;
+  --blue: #6f9bff;
+  --blue-2: #8db0ff;
+  --blue-ink: #8db0ff;
+  --green: #35c98d;
+  --gold: #e0b64a;
+  --empty: #ff6b45;
+
+  --flow-loaded: #f2efe4;
+  --flow-empty: #6f6a5c;
+
+  --wash-rgb: 255, 255, 255;
+  --well-rgb: 0, 0, 0;
+  --scrim-rgb: 13, 13, 12;
+  --cyan-ink: #64e9ff;
+  color-scheme: dark;
+}
+
+/* ── Base surface ────────────────────────────────────────────────────── */
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--sans);
+  /* Faint printed grid — the sheet the plan is drawn on. */
+  background-image:
+    linear-gradient(to right, rgba(var(--wash-rgb), 0.045) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(var(--wash-rgb), 0.045) 1px, transparent 1px);
+  background-size: 96px 96px;
+}
+
+::selection {
+  background: var(--signal);
+  color: #fff;
+}
+
+/* The base sheet still ships blurred glows and rounded glass; kill both. */
+.hero-glow,
+.hero-grid {
+  display: none !important;
+}
+
+.card,
+.method-card,
+.btn,
+.tag,
+.chip {
+  border-radius: 0 !important;
+}
+
+.card {
+  background: transparent;
+  border: 1px solid var(--line);
+  box-shadow: none;
+}
+
+/* ── Shell ───────────────────────────────────────────────────────────── */
+
+.zm-shell {
+  max-width: var(--max);
+  margin: 0 auto;
+  padding: 0 var(--pad);
+}
+
+.zm-rule {
+  border: 0;
+  border-top: 1px solid var(--line);
+  margin: 0;
+}
+
+.zm-rule-heavy {
+  border: 0;
+  border-top: 2px solid var(--ink);
+  margin: 0;
+}
+
+.zm-mono {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.zm-serif {
+  font-family: var(--serif);
+  font-weight: 400;
+  font-style: italic;
+  letter-spacing: -0.01em;
+}
+
+/* ── Masthead ────────────────────────────────────────────────────────── */
+
+.zm-mast {
+  position: sticky;
+  top: 0;
+  z-index: 60;
+  background: rgba(var(--scrim-rgb), 0.92);
+  backdrop-filter: saturate(120%) blur(6px);
+  border-bottom: 1px solid var(--line);
+}
+
+.zm-mast-inner {
+  max-width: var(--max);
+  margin: 0 auto;
+  padding: 0 var(--pad);
+  height: 62px;
+  display: flex;
+  align-items: center;
+  gap: 22px;
+}
+
+.zm-wordmark {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  text-decoration: none;
+  color: var(--ink);
+  font-weight: 800;
+  font-size: 19px;
+  letter-spacing: -0.06em;
+  text-transform: uppercase;
+}
+
+.zm-wordmark i {
+  width: 9px;
+  height: 9px;
+  background: var(--signal);
+  display: inline-block;
+  transform: translateY(-1px);
+}
+
+.zm-mast-meta {
+  display: none;
+}
+
+.zm-nav {
+  margin-left: auto;
+  display: flex;
+  gap: 20px;
+}
+
+.zm-nav a {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  text-decoration: none;
+  padding: 4px 0;
+  border-bottom: 2px solid transparent;
+}
+
+.zm-nav a:hover {
+  color: var(--ink);
+}
+
+.zm-nav a.on {
+  color: var(--ink);
+  border-bottom-color: var(--signal);
+}
+
+.zm-mast-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.zm-nav + .zm-mast-actions {
+  margin-left: 0;
+}
+
+.zm-swatch {
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--line-2);
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+}
+
+.zm-swatch:hover {
+  background: var(--ink);
+  color: var(--bg);
+}
+
+/* ── Buttons ─────────────────────────────────────────────────────────── */
+
+.zm-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 18px;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  text-decoration: none;
+  border: 1px solid var(--ink);
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+  transition: transform 0.12s ease, box-shadow 0.12s ease, background 0.12s ease;
+}
+
+.zm-btn:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: 4px 4px 0 var(--ink);
+}
+
+.zm-btn-fill {
+  background: var(--signal);
+  border-color: var(--signal);
+  color: #fff;
+}
+
+.zm-btn-fill:hover {
+  box-shadow: 4px 4px 0 var(--ink);
+}
+
+.zm-btn-sm {
+  padding: 8px 13px;
+  font-size: 10.5px;
+}
+
+/* Base-system primary buttons live inside the console — restyle in place. */
+.btn-primary {
+  background: var(--signal) !important;
+  color: #fff !important;
+  border: 1px solid var(--signal) !important;
+  box-shadow: none !important;
+  font-family: var(--mono);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+/* ── Section scaffold ────────────────────────────────────────────────── */
+
+.zm-section {
+  padding: var(--section) 0;
+  border-top: 1px solid var(--line);
+}
+
+.zm-head {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr);
+  gap: 0 24px;
+  align-items: start;
+}
+
+.zm-head-n {
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: var(--signal);
+  padding-top: 10px;
+}
+
+.zm-head h2 {
+  font-size: clamp(30px, 5.2vw, 60px);
+  line-height: 1.02;
+  letter-spacing: -0.045em;
+  font-weight: 800;
+  margin: 0;
+  max-width: 20ch;
+}
+
+.zm-head h2 em {
+  font-family: var(--serif);
+  font-style: italic;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  color: var(--signal);
+}
+
+.zm-head p {
+  margin: 20px 0 0;
+  max-width: 62ch;
+  color: var(--ink-2);
+  font-size: clamp(15px, 1.4vw, 17px);
+  line-height: 1.72;
+}
+
+.zm-kicker {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  display: block;
+  margin-bottom: 14px;
+}
+
+.zm-body {
+  margin-top: 46px;
+}
+
+/* ── Hero ────────────────────────────────────────────────────────────── */
+
+.zm-hero {
+  padding: clamp(38px, 6vw, 74px) 0 0;
+}
+
+.zm-hero-top {
+  display: flex;
+  gap: 16px;
+  align-items: baseline;
+  flex-wrap: wrap;
+  padding-bottom: 14px;
+  border-bottom: 2px solid var(--ink);
+}
+
+.zm-hero-top span {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.zm-hero-top span + span::before {
+  content: '/';
+  margin-right: 16px;
+  color: var(--line-2);
+}
+
+.zm-hero-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.06fr) minmax(0, 0.94fr);
+  gap: clamp(24px, 4vw, 56px);
+  padding: clamp(28px, 4vw, 54px) 0 0;
+}
+
+.zm-h1 {
+  font-size: clamp(46px, 8.6vw, 118px);
+  line-height: 0.94;
+  letter-spacing: -0.055em;
+  font-weight: 800;
+  margin: 0;
+}
+
+.zm-h1 em {
+  font-family: var(--serif);
+  font-style: italic;
+  font-weight: 400;
+  letter-spacing: -0.015em;
+  color: var(--signal);
+}
+
+.zm-hero-lede {
+  margin: 26px 0 0;
+  max-width: 46ch;
+  color: var(--ink-2);
+  font-size: clamp(15px, 1.5vw, 17.5px);
+  line-height: 1.74;
+}
+
+.zm-hero-cta {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 30px;
+}
+
+/* The map, presented as a plate in a printed report. */
+.zm-plate {
+  border: 1px solid var(--ink);
+  background: var(--bg-2);
+  position: relative;
+}
+
+.zm-plate-cap {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--line);
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.zm-plate-foot {
+  padding: 9px 12px;
+  border-top: 1px solid var(--line);
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  color: var(--ink-4);
+}
+
+.zm-hero-map {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 0.9;
+  min-height: 340px;
+}
+
+.zm-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--signal);
+}
+
+.zm-live i {
+  width: 6px;
+  height: 6px;
+  background: var(--signal);
+  animation: zm-blink 1.6s steps(1, end) infinite;
+}
+
+@keyframes zm-blink {
+  0%,
+  55% {
+    opacity: 1;
+  }
+  56%,
+  100% {
+    opacity: 0.15;
+  }
+}
+
+/* ── Figure strip (stats) ────────────────────────────────────────────── */
+
+.zm-figures {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  border-top: 2px solid var(--ink);
+  margin-top: clamp(34px, 5vw, 62px);
+}
+
+.zm-fig {
+  padding: 20px 20px 22px;
+  border-right: 1px solid var(--line);
+}
+
+.zm-fig:last-child {
+  border-right: 0;
+}
+
+.zm-fig b {
+  display: block;
+  font-family: var(--mono);
+  font-size: clamp(21px, 2.6vw, 30px);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  color: var(--ink);
+}
+
+.zm-fig b.sig {
+  color: var(--signal);
+}
+
+.zm-fig span {
+  display: block;
+  margin-top: 8px;
+  font-size: 12.5px;
+  color: var(--ink-3);
+  letter-spacing: -0.01em;
+}
+
+/* ── Marquee ─────────────────────────────────────────────────────────── */
+
+.zm-marquee {
+  background: var(--ink);
+  color: var(--bg);
+  overflow: hidden;
+  border-top: 2px solid var(--ink);
+  border-bottom: 2px solid var(--ink);
+  padding: 11px 0;
+}
+
+.zm-marquee-track {
+  display: flex;
+  width: max-content;
+  animation: zm-scroll 34s linear infinite;
+}
+
+.zm-marquee-run {
+  display: flex;
+  gap: 46px;
+  padding-right: 46px;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.zm-marquee-run b {
+  color: var(--signal);
+  font-weight: 700;
+}
+
+@keyframes zm-scroll {
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .zm-marquee-track {
+    animation: none;
+  }
+}
+
+/* ── Ruled list (problems, moat, method) ─────────────────────────────── */
+
+.zm-rows {
+  border-top: 1px solid var(--line);
+}
+
+.zm-row {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 0.85fr) minmax(0, 1.15fr);
+  gap: 8px 24px;
+  padding: 26px 0;
+  border-bottom: 1px solid var(--line);
+  align-items: start;
+  transition: background 0.15s ease;
+}
+
+.zm-row:hover {
+  background: var(--panel);
+}
+
+.zm-row-n {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  color: var(--ink-4);
+  padding-top: 6px;
+}
+
+.zm-row-t {
+  font-size: clamp(19px, 2.2vw, 27px);
+  font-weight: 700;
+  letter-spacing: -0.035em;
+  margin: 0;
+  line-height: 1.16;
+}
+
+.zm-row-k {
+  display: block;
+  margin-top: 8px;
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  color: var(--signal);
+}
+
+.zm-row-k.mute {
+  color: var(--ink-4);
+}
+
+.zm-row-d {
+  margin: 0;
+  color: var(--ink-2);
+  font-size: 14.5px;
+  line-height: 1.76;
+}
+
+/* ── Cut chain ───────────────────────────────────────────────────────── */
+
+.zm-chain {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  border: 1px solid var(--ink);
+  margin-top: 32px;
+}
+
+.zm-chain div {
+  padding: 18px;
+  border-right: 1px solid var(--line);
+  display: grid;
+  gap: 10px;
+}
+
+.zm-chain div:last-child {
+  border-right: 0;
+}
+
+.zm-chain b {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.zm-chain span {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  color: var(--signal);
+}
+
+.zm-chain span.none {
+  color: var(--ink-4);
+}
+
+/* ── Compare ─────────────────────────────────────────────────────────── */
+
+.zm-compare {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  border: 1px solid var(--ink);
+}
+
+.zm-compare > article {
+  padding: clamp(20px, 2.4vw, 30px);
+  border-right: 1px solid var(--line);
+  display: grid;
+  gap: 18px;
+  align-content: start;
+}
+
+.zm-compare > article:last-child {
+  border-right: 0;
+}
+
+.zm-compare h3 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+
+.zm-badge {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 4px 8px;
+  border: 1px solid currentColor;
+}
+
+.zm-badge.bad {
+  color: var(--empty);
+}
+
+.zm-badge.good {
+  color: var(--green);
+}
+
+.zm-split {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.zm-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 10px;
+}
+
+.zm-list li {
+  padding-left: 20px;
+  position: relative;
+  color: var(--ink-2);
+  font-size: 14px;
+  line-height: 1.66;
+}
+
+.zm-list li::before {
+  content: '—';
+  position: absolute;
+  left: 0;
+  color: var(--ink-4);
+}
+
+/* ── Lab (console) ───────────────────────────────────────────────────── */
+
+.zm-lab-plate {
+  border: 1px solid var(--ink);
+  padding: clamp(12px, 1.6vw, 18px);
+  background: var(--bg-2);
+}
+
+.zm-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0;
+  border: 1px solid var(--line);
+  margin-top: 26px;
+}
+
+.zm-chips span {
+  flex: 1 1 150px;
+  padding: 11px 14px;
+  border-right: 1px solid var(--line);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.zm-chips span:last-child {
+  border-right: 0;
+}
+
+.zm-chips b {
+  color: var(--ink);
+  margin-right: 8px;
+}
+
+/* Ledger — before/after readout under the console. */
+.zm-ledger {
+  border-top: 2px solid var(--ink);
+  margin-top: 34px;
+}
+
+.zm-ledger-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  gap: 14px;
+  align-items: baseline;
+  padding: 15px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.zm-ledger-row > span:first-child {
+  font-size: 14px;
+  letter-spacing: -0.01em;
+}
+
+.zm-ledger-from {
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--ink-4);
+  text-decoration: line-through;
+}
+
+.zm-ledger-arrow {
+  font-family: var(--mono);
+  color: var(--ink-4);
+  font-size: 12px;
+}
+
+.zm-ledger-to {
+  font-family: var(--mono);
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--signal);
+  letter-spacing: -0.02em;
+}
+
+.zm-why {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  border: 1px solid var(--ink);
+  margin-top: 28px;
+}
+
+.zm-why > div {
+  padding: 20px;
+  border-right: 1px solid var(--line);
+  display: grid;
+  gap: 9px;
+  align-content: start;
+}
+
+.zm-why > div:last-child {
+  border-right: 0;
+}
+
+.zm-why span {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--signal);
+}
+
+.zm-why b {
+  font-size: 15.5px;
+  letter-spacing: -0.025em;
+  line-height: 1.35;
+}
+
+.zm-why p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.66;
+  color: var(--ink-3);
+}
+
+/* ── Driver ──────────────────────────────────────────────────────────── */
+
+.zm-driver {
+  display: grid;
+  grid-template-columns: minmax(300px, 380px) minmax(0, 1fr);
+  gap: clamp(28px, 5vw, 68px);
+  align-items: start;
+}
+
+.zm-checks {
+  display: grid;
+  gap: 0;
+  border-top: 1px solid var(--line);
+}
+
+.zm-checks > div {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr);
+  gap: 12px;
+  padding: 18px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.zm-checks i {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-style: normal;
+  color: var(--signal);
+  padding-top: 3px;
+}
+
+.zm-checks b {
+  display: block;
+  font-size: 15.5px;
+  letter-spacing: -0.02em;
+  margin-bottom: 5px;
+}
+
+.zm-checks p {
+  margin: 0;
+  color: var(--ink-3);
+  font-size: 13.5px;
+  line-height: 1.7;
+}
+
+/* ── Guarantee ───────────────────────────────────────────────────────── */
+
+.zm-two {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: clamp(24px, 4vw, 54px);
+  align-items: start;
+}
+
+.zm-quote {
+  border-left: 3px solid var(--signal);
+  padding: 4px 0 4px 22px;
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: clamp(21px, 2.6vw, 30px);
+  line-height: 1.32;
+  letter-spacing: -0.02em;
+}
+
+.zm-note {
+  color: var(--ink-3);
+  font-size: 13.5px;
+  line-height: 1.75;
+  margin: 16px 0 0;
+}
+
+/* ── Footer ──────────────────────────────────────────────────────────── */
+
+.zm-footer {
+  border-top: 2px solid var(--ink);
+  padding: 34px 0 54px;
+}
+
+.zm-footer-inner {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+/* ── Reveal (base helper, retuned: shorter travel, no blur) ──────────── */
+
+.reveal {
+  opacity: 0;
+  transform: translateY(14px);
+  filter: none !important;
+  transition:
+    opacity 0.5s ease var(--d, 0ms),
+    transform 0.5s cubic-bezier(0.22, 1, 0.36, 1) var(--d, 0ms);
+}
+
+.reveal.in {
+  opacity: 1;
+  transform: none;
+}
+
+/* ── Responsive ──────────────────────────────────────────────────────── */
+
+@media (max-width: 1080px) {
+  .zm-hero-grid,
+  .zm-driver {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .zm-nav {
+    display: none;
+  }
+}
+
+@media (max-width: 760px) {
+  .zm-head,
+  .zm-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .zm-head-n,
+  .zm-row-n {
+    padding-top: 0;
+  }
+
+  .zm-fig {
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+}
