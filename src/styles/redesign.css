@@ -1204,3 +1204,86 @@ body {
 #lab .zm-ledger {
   margin-top: 52px;
 }
+
+/* ── Empty states ────────────────────────────────────────────────────────
+ *
+ * Before a run there is nothing to report, but the layout still reserved the
+ * space for it: a 144px KPI band washed across the top of the map, and two
+ * full-height rails whose content stopped less than halfway down. Both read as
+ * broken panels rather than as "nothing here yet".
+ *
+ * So the placeholder shrinks to a hint card, and the rails hug their content.
+ * -------------------------------------------------------------------- */
+
+.ops-kpis-empty {
+  min-height: 0;
+  width: max-content;
+  max-width: min(100%, 460px);
+  align-self: center;
+  padding: 13px 20px;
+  border: 1px solid var(--ops-line);
+  border-radius: var(--r-sm);
+  background: rgba(var(--scrim-rgb), 0.92);
+  backdrop-filter: blur(10px);
+}
+
+/* The band's drag-to-resize grip has nothing to resize while it is a hint. */
+.ops-kpis-empty + .pane-grip {
+  display: none;
+}
+
+/*
+ * `align-self: start` is what does the hugging: the rails are grid items, so
+ * without it they stretch to the stage row and their `minmax(0, 1fr)` middle
+ * band pays for it in blank card. The max-height keeps the cap for the busy
+ * state, where the inner scroller takes over.
+ */
+.ops-planner,
+.ops-telemetry {
+  align-self: start;
+  max-height: calc(100% - 2 * var(--float, 12px));
+}
+
+:root[data-theme='light'] .ops-kpis-empty {
+  background: rgba(255, 255, 255, 0.94);
+  border-color: rgba(28, 24, 8, 0.13);
+  box-shadow: 0 10px 26px -20px rgba(28, 24, 8, 0.55);
+}
+
+/* ── Console ergonomics ──────────────────────────────────────────────────
+ * Scoped to `.ops` — the rest of the page is reading matter, this is the part
+ * people actually operate. Controls were 32–33px targets inside a 891px panel.
+ * -------------------------------------------------------------------- */
+
+.ops .select-field select,
+.ops select {
+  min-height: 40px;
+  padding-block: 10px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.ops .seg-item {
+  min-height: 38px;
+  padding: 8px 15px;
+}
+
+/* The 2×3 constraint grid read as one dense block of six controls. */
+.ops .constraint-grid {
+  gap: 14px 12px;
+}
+
+.ops .field {
+  padding: 11px 13px;
+}
+
+/* Rail headers carry the 01/02 step numbers — keep them on one optical line. */
+.ops .rail-tab {
+  min-height: 56px;
+}
+
+/* The run bar is the console's one committing action; give it room to be it. */
+.ops .run-cta {
+  min-height: 52px;
+  font-weight: 700;
+}
