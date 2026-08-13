@@ -20,52 +20,64 @@
  */
 :root,
 :root[data-theme='light'] {
-  --bg: #ece8dc;
-  --bg-2: #e4dfd0;
-  --bg-3: #d8d2c0;
+  /* Kakao stock: warm white paper, not the old cream card. */
+  --bg: #f7f6f1;
+  --bg-2: #ffffff;
+  --bg-3: #eceada;
 
-  --panel: rgba(18, 17, 13, 0.028);
-  --panel-2: rgba(18, 17, 13, 0.06);
-  --line: rgba(18, 17, 13, 0.16);
-  --line-2: rgba(18, 17, 13, 0.34);
+  --panel: rgba(28, 24, 8, 0.028);
+  --panel-2: rgba(28, 24, 8, 0.06);
+  --line: rgba(28, 24, 8, 0.14);
+  --line-2: rgba(28, 24, 8, 0.3);
 
-  --ink: #12110d;
-  --ink-2: #3f3c33;
-  --ink-3: #676356;
-  --ink-4: #8d8878;
+  --ink: #1a1710;
+  --ink-2: #46423a;
+  --ink-3: #6d685c;
+  --ink-4: #857f6e;
 
-  /* One signal colour, used sparingly and never as a wash. */
-  --signal: #ff3d14;
-  --signal-2: #d92f0c;
-  --yellow: #ff3d14;
-  --yellow-2: #ff6a45;
-  --yellow-dim: rgba(255, 61, 20, 0.12);
-  --yellow-ink: #c92c08;
-  --yellow-ink-2: #a52405;
-  --blue: #1d4ed8;
-  --blue-2: #2563eb;
-  --blue-ink: #1d4ed8;
-  --blue-dim: rgba(29, 78, 216, 0.1);
+  /*
+   * Kakao yellow is a *fill*, never text — #fee500 on paper is ~1.2:1. So the
+   * page keeps two accents: `--signal` paints (bars, dots, highlighter bands)
+   * and `--signal-ink` writes (numerals, eyebrows, figures).
+   */
+  --signal: #fee500;
+  --signal-2: #ffeb4d;
+  --signal-ink: #7a6200;
+  --on-signal: #3c1e1e;
+
+  --yellow: #fee500;
+  --yellow-2: #ffeb4d;
+  --yellow-dim: rgba(254, 229, 0, 0.26);
+  --yellow-ink: #7a6200;
+  --yellow-ink-2: #635000;
+  --kakao-brown: #3c1e1e;
+  --blue: #1a5fd0;
+  --blue-2: #2b74e8;
+  --blue-ink: #1a5fd0;
+  --blue-dim: rgba(26, 95, 208, 0.1);
 
   --green: #0b7a52;
-  --gold: #9a6b00;
-  --empty: #b03a1c;
-  --empty-dim: rgba(176, 58, 28, 0.12);
+  --gold: #8a6d00;
+  --empty: #b0431c;
+  --empty-dim: rgba(176, 67, 28, 0.12);
 
   /* Freight ink on the map: loaded legs are ink, deadhead is faded pencil. */
-  --flow-loaded: #14130f;
-  --flow-empty: #a29c8a;
+  --flow-loaded: #1a1710;
+  --flow-empty: #a8a290;
 
   --sans: 'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont,
     'Apple SD Gothic Neo', 'Segoe UI', Roboto, sans-serif;
   --mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
   --serif: 'Instrument Serif', 'Times New Roman', serif;
 
-  /* Flat by decree — the old system was all 16–34px pills. */
-  --r-sm: 0px;
-  --r: 0px;
-  --r-lg: 0px;
-  --r-xl: 0px;
+  /*
+   * The page shell stays square (it is a printed sheet); the console and its
+   * controls keep a Kakao-ish soft radius, because they are an app.
+   */
+  --r-sm: 8px;
+  --r: 12px;
+  --r-lg: 16px;
+  --r-xl: 20px;
 
   --max: 1320px;
   --rail: 78px;
@@ -92,20 +104,27 @@
 
   --ink: #f4f1e6;
   --ink-2: #b6b2a3;
-  --ink-3: #85806f;
-  --ink-4: #5c584c;
+  --ink-3: #8b8674;
+  --ink-4: #6f6a5b;
 
-  --signal: #ff4a22;
-  --yellow: #ff4a22;
-  --yellow-2: #ff7a55;
-  --yellow-ink: #ff6a3f;
-  --yellow-ink-2: #ff8a67;
+  /* On carbon the yellow can write as well as paint — 13:1 against #0d0d0c. */
+  --signal: #fee500;
+  --signal-2: #ffef66;
+  --signal-ink: #fee500;
+  --on-signal: #191600;
+
+  --yellow: #fee500;
+  --yellow-2: #ffef66;
+  --yellow-dim: rgba(254, 229, 0, 0.14);
+  --yellow-ink: #fee500;
+  --yellow-ink-2: #ffef66;
+  --kakao-brown: #3c1e1e;
   --blue: #6f9bff;
   --blue-2: #8db0ff;
   --blue-ink: #8db0ff;
   --green: #35c98d;
   --gold: #e0b64a;
-  --empty: #ff6b45;
+  --empty: #ff7a4d;
 
   --flow-loaded: #f2efe4;
   --flow-empty: #6f6a5c;
@@ -136,7 +155,7 @@ body {
 
 ::selection {
   background: var(--signal);
-  color: #fff;
+  color: var(--on-signal);
 }
 
 /* The base sheet still ships blurred glows and rounded glass; kill both. */
@@ -145,12 +164,17 @@ body {
   display: none !important;
 }
 
-.card,
-.method-card,
-.btn,
-.tag,
-.chip {
-  border-radius: 0 !important;
+/* The sheet is square; the app inside it keeps Kakao's soft corners. */
+.zm-plate,
+.zm-lab-plate,
+.zm-chain,
+.zm-compare,
+.zm-why,
+.zm-chips,
+.zm-btn,
+.zm-badge,
+.zm-swatch {
+  border-radius: 0;
 }
 
 .card {
@@ -316,10 +340,12 @@ body {
   box-shadow: 4px 4px 0 var(--ink);
 }
 
+/* Kakao's own button: yellow ground, brown type, never white type. */
 .zm-btn-fill {
   background: var(--signal);
   border-color: var(--signal);
-  color: #fff;
+  color: var(--on-signal);
+  font-weight: 700;
 }
 
 .zm-btn-fill:hover {
@@ -334,7 +360,7 @@ body {
 /* Base-system primary buttons live inside the console — restyle in place. */
 .btn-primary {
   background: var(--signal) !important;
-  color: #fff !important;
+  color: var(--on-signal) !important;
   border: 1px solid var(--signal) !important;
   box-shadow: none !important;
   font-family: var(--mono);
@@ -361,7 +387,7 @@ body {
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.1em;
-  color: var(--signal);
+  color: var(--signal-ink);
   padding-top: 10px;
 }
 
@@ -374,12 +400,16 @@ body {
   max-width: 20ch;
 }
 
-.zm-head h2 em {
-  font-family: var(--serif);
-  font-style: italic;
-  font-weight: 400;
-  letter-spacing: -0.01em;
-  color: var(--signal);
+.zm-head h2 em,
+.zm-h1 em {
+  font-style: normal;
+  font-weight: inherit;
+  color: var(--ink);
+  /* Kakao's yellow as a marker pen: it paints, the ink still reads. */
+  background-image: linear-gradient(transparent 58%, var(--signal) 58%, var(--signal) 94%, transparent 94%);
+  padding: 0 0.08em;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
 }
 
 .zm-head p {
@@ -448,13 +478,6 @@ body {
   margin: 0;
 }
 
-.zm-h1 em {
-  font-family: var(--serif);
-  font-style: italic;
-  font-weight: 400;
-  letter-spacing: -0.015em;
-  color: var(--signal);
-}
 
 .zm-hero-lede {
   margin: 26px 0 0;
@@ -511,7 +534,7 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  color: var(--signal);
+  color: var(--signal-ink);
 }
 
 .zm-live i {
@@ -560,7 +583,7 @@ body {
 }
 
 .zm-fig b.sig {
-  color: var(--signal);
+  color: var(--signal-ink);
 }
 
 .zm-fig span {
@@ -658,7 +681,7 @@ body {
   font-family: var(--mono);
   font-size: 12px;
   letter-spacing: 0.06em;
-  color: var(--signal);
+  color: var(--signal-ink);
 }
 
 .zm-row-k.mute {
@@ -702,7 +725,7 @@ body {
   font-family: var(--mono);
   font-size: 11px;
   letter-spacing: 0.1em;
-  color: var(--signal);
+  color: var(--signal-ink);
 }
 
 .zm-chain span.none {
@@ -856,7 +879,7 @@ body {
   font-family: var(--mono);
   font-size: 18px;
   font-weight: 700;
-  color: var(--signal);
+  color: var(--signal-ink);
   letter-spacing: -0.02em;
 }
 
@@ -884,7 +907,7 @@ body {
   font-size: 10.5px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: var(--signal);
+  color: var(--signal-ink);
 }
 
 .zm-why b {
@@ -927,7 +950,7 @@ body {
   font-family: var(--mono);
   font-size: 11px;
   font-style: normal;
-  color: var(--signal);
+  color: var(--signal-ink);
   padding-top: 3px;
 }
 
@@ -1030,4 +1053,154 @@ body {
     border-right: 0;
     border-bottom: 1px solid var(--line);
   }
+}
+
+
+/* ── The console ─────────────────────────────────────────────────────────
+ *
+ * `index.css` builds the ops console as a dark instrument: literal
+ * `rgba(9,10,10,.8)` glass, a `#05060a` canvas, black input wells. It has no
+ * light-mode branch, so on paper it rendered dark-on-dark — near-black ink from
+ * the light palette printed onto near-black glass.
+ *
+ * The basemap under it is Positron (light) whenever the page is light, so the
+ * fix is to bring the chrome up to the map rather than push the map down to the
+ * chrome: white cards, hairline rules, Kakao yellow for state.
+ * -------------------------------------------------------------------- */
+
+:root[data-theme='light'] .ops {
+  --ops-line: rgba(28, 24, 8, 0.12);
+  --ops-field: #ffffff;
+  border: 1px solid rgba(28, 24, 8, 0.16);
+  background: linear-gradient(180deg, #ffffff 0%, #fbfaf4 100%);
+  box-shadow: 0 1px 0 rgba(28, 24, 8, 0.05);
+}
+
+/* Instrument texture and the glowing brand bar are dark-room furniture. */
+:root[data-theme='light'] .ops-hud {
+  display: none;
+}
+
+:root[data-theme='light'] .ops-planner,
+:root[data-theme='light'] .ops-telemetry,
+:root[data-theme='light'] .ops-kpis,
+:root[data-theme='light'] .ops-routes,
+:root[data-theme='light'] .canvas-legend,
+:root[data-theme='light'] .canvas-note,
+:root[data-theme='light'] .result-banner {
+  border: 1px solid rgba(28, 24, 8, 0.13);
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 10px 26px -20px rgba(28, 24, 8, 0.55);
+}
+
+:root[data-theme='light'] .ops-canvas {
+  background: #eceada;
+}
+
+/* The pre-run KPI band is its own dark wash — same treatment as the panels. */
+:root[data-theme='light'] .ops-kpis-empty {
+  background: rgba(28, 24, 8, 0.03);
+  border-bottom-color: rgba(28, 24, 8, 0.12);
+}
+
+/*
+ * The 3D loader stays a dark instrument on paper — cyan wireframe on black is
+ * the whole point of it, and index.css already keeps `.truck-viewport` dark.
+ * Re-declaring the dark tokens for the surrounding panel makes its labels
+ * legible again instead of printing near-black text on a black bay.
+ */
+:root[data-theme='light'] .truck-lab {
+  --ink: #f7f5ec;
+  --ink-2: #b8b5a8;
+  --ink-3: #7e7b70;
+  --ink-4: #535148;
+  --wash-rgb: 255, 255, 255;
+  --well-rgb: 0, 0, 0;
+  --cyan-ink: #64e9ff;
+  --signal-ink: #fee500;
+  --yellow-ink: #fee500;
+  border-radius: var(--r-sm);
+  background: radial-gradient(circle at 70% 24%, rgba(63, 219, 255, 0.09), transparent 42%),
+    #0b0d10;
+  color: var(--ink);
+  color-scheme: dark;
+}
+
+:root[data-theme='light'] .field,
+:root[data-theme='light'] .field-menu,
+:root[data-theme='light'] .select-field,
+:root[data-theme='light'] .cargo-detail,
+:root[data-theme='light'] .route-opt {
+  background: #ffffff;
+  border-color: rgba(28, 24, 8, 0.16);
+  color-scheme: light;
+}
+
+:root[data-theme='light'] .field-menu {
+  box-shadow: 0 20px 44px -24px rgba(28, 24, 8, 0.6);
+}
+
+/* Kakao's state colour: a yellow chip with brown text, not glowing yellow ink. */
+:root[data-theme='light'] .ops-status.set,
+:root[data-theme='light'] .ops-status.ok,
+:root[data-theme='light'] .ops-status.busy {
+  background: var(--signal);
+  color: var(--on-signal);
+  border-color: rgba(28, 24, 8, 0.16);
+}
+
+/* ── De-crowding ─────────────────────────────────────────────────────────
+ * The console reads as ~12 competing surfaces. Widen the map lane, calm the
+ * chrome, and let the two rails be cards instead of lit panels.
+ * -------------------------------------------------------------------- */
+
+.ops {
+  --ops-rail: 312px;
+}
+
+.ops-planner,
+.ops-telemetry,
+.ops-kpis,
+.ops-routes {
+  backdrop-filter: blur(14px);
+}
+
+/* One frame around the console is enough — the section wrapper drops its own. */
+.zm-lab-plate {
+  border: 0;
+  padding: 0;
+  background: transparent;
+}
+
+/* Chips were a boxed four-up grid; they are metadata, so set them as a line. */
+.zm-chips {
+  border: 0;
+  display: flex;
+  gap: 22px;
+  margin-top: 20px;
+  flex-wrap: wrap;
+}
+
+.zm-chips span {
+  flex: 0 0 auto;
+  padding: 0;
+  border: 0;
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  color: var(--ink-4);
+}
+
+.zm-chips b {
+  color: var(--signal-ink);
+  margin-right: 7px;
+  font-weight: 700;
+}
+
+/* More air between the pitch and the instrument. */
+#lab .zm-body {
+  margin-top: 56px;
+}
+
+#lab .zm-ledger {
+  margin-top: 52px;
 }
