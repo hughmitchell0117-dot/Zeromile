@@ -1,12 +1,25 @@
 import { useEffect, useMemo, useState } from 'react';
-import DemoConsole, { type DemoResult } from './components/DemoConsole';
+import DemoConsole, {
+  type DemoResult,
+  type MoveTally,
+  type SolvePoint,
+} from './components/DemoConsole';
 import DriverPhone from './components/DriverPhone';
 import KoreaMap from './components/KoreaMap';
 import { useTheme, type Theme } from './lib/theme';
 import { Reveal } from './components/ui';
 import { generateDrivers, generateLoads } from './lib/generate';
 import { buildBaseline } from './lib/solver';
-import { won, type Tour } from './lib/model';
+import {
+  won,
+  COST_WON_PER_KM,
+  FUEL_WON_PER_KM,
+  TOLL_WON_PER_KM,
+  HOME_RADIUS_KM,
+  LEG_HANDLING_HOURS,
+  MAX_DUTY_HOURS,
+  type Tour,
+} from './lib/model';
 import { CITIES } from './lib/geo';
 import { siteLabel } from './lib/sites';
 
@@ -295,7 +308,7 @@ export default function App() {
             )}
 
             <Reveal>
-              <Methodology />
+              <Methodology result={result} />
             </Reveal>
           </div>
         </section>
@@ -626,35 +639,681 @@ function WhyItWorked({ tour, result }: { tour: Tour; result: DemoResult }) {
   );
 }
 
-function Methodology() {
+/* ── Methodology dashboard ──────────────────────────────────────────────
+ *
+ * Seven panels behind the `시뮬레이션 방법론` disclosure, every one of them
+ * drawn from the run the visitor just watched: the same tours the map is
+ * showing, the same per-frame trace the progress bar was reading, the same
+ * move counters the annealer kept. Before a solve there is nothing honest to
+ * plot, so the section says so and states the method in words instead.
+ * -------------------------------------------------------------------- */
+
+const REDUCED_MOTION =
+  typeof window !== 'undefined' &&
+  window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+
+/** Eases a figure up from zero once its panel is open. */
+function useCountUp(target: number, run: boolean, ms = 1100) {
+  const [value, setValue] = useState(0);
+
+  useEffect(() => {
+    if (!run) {
+      setValue(0);
+      return;
+    }
+    if (REDUCED_MOTION) {
+      setValue(target);
+      return;
+    }
+    let raf = 0;
+    const start = performance.now();
+    const tick = (now: number) => {
+      const p = Math.min(1, (now - start) / ms);
+      setValue(target * (1 - Math.pow(1 - p, 3)));
+      if (p < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [target, run, ms]);
+
+  return value;
+}
+
+/** Drivers start their day at the yard at 06:00. */
+const DAY_START_HOUR = 6;
+const HEAT_BUCKETS = [6, 8, 10, 12, 14, 16, 18, 20];
+const HEAT_ROWS = ['1구간', '2구간', '3구간', '4구간', '5구간+'];
+/** Deadhead approach has km but no clock, so pace it at motorway average. */
+const APPROACH_KMH = 72;
+
+const MOVE_LABELS: { key: keyof MoveTally; ko: string }[] = [
+  { key: 'insert', ko: '빈 자리에 화물 삽입' },
+  { key: 'relocate', ko: '다른 기사에게 이관' },
+  { key: 'swap', ko: '두 구간 맞교환' },
+  { key: 'remove', ko: '수익 안 나는 구간 제거' },
+  { key: 'reorder', ko: '방문 순서 재배열' },
+];
+
+type MethodData = {
+  emptyBase: number;
+  emptyOpt: number;
+  netBase: number;
+  netOpt: number;
+  history: SolvePoint[];
+  legMix: { label: string; count: number; pct: number }[];
+  peakLabel: string;
+  avgHours: number;
+  avgReturnKm: number;
+  perKm: { gross: number; fuel: number; toll: number; net: number };
+  moves: { key: string; ko: string; proposed: number; accepted: number; rate: number }[];
+  topProposed: number;
+  heat: number[][];
+  heatMax: number;
+  workingTours: number;
+  loadsServed: number;
+  solveMs: number;
+};
+
+/** Everything the panels draw, derived once from the finished run. */
+function deriveMethod(result: DemoResult | null): MethodData | null {
+  if (!result?.optStats || result.tours.length === 0) return null;
+
+  const working = result.tours.filter((tour) => tour.legs.length > 0);
+  if (working.length === 0) return null;
+
+  // Leg-count mix, capped at a 5+ bucket.
+  const buckets = [0, 0, 0, 0, 0];
+  for (const tour of working) buckets[Math.min(tour.legs.length, 5) - 1]++;
+  const legMix = buckets.map((count, i) => ({
+    label: i === 4 ? '5+' : String(i + 1),
+    count,
+    pct: (count / working.length) * 100,
+  }));
+  const peak = legMix.reduce((a, b) => (b.count > a.count ? b : a));
+
+  // Per-km ledger. Cost is fuel + toll on every km the truck turns, loaded or
+  // not — the empty km are what the chaining is trying to delete.
+  const revenue = working.reduce((sum, t) => sum + t.revenue, 0);
+  const km = working.reduce((sum, t) => sum + t.loadedKm + t.emptyKm, 0);
+  const gross = km > 0 ? revenue / km : 0;
+  const perKm = {
+    gross,
+    fuel: FUEL_WON_PER_KM,
+    toll: TOLL_WON_PER_KM,
+    net: gross - COST_WON_PER_KM,
+  };
+
+  const avgHours = working.reduce((sum, t) => sum + t.hours, 0) / working.length;
+  const closed = working.filter((t) => t.returnKm <= HOME_RADIUS_KM);
+  const avgReturnKm = closed.length
+    ? closed.reduce((sum, t) => sum + t.returnKm, 0) / closed.length
+    : 0;
+
+  // When each leg actually rolls, walked forward from the 06:00 yard start.
+  const heat = HEAT_ROWS.map(() => HEAT_BUCKETS.map(() => 0));
+  for (const tour of working) {
+    let clock = DAY_START_HOUR;
+    tour.legs.forEach((leg, i) => {
+      clock += leg.deadheadKm / APPROACH_KMH;
+      const row = Math.min(i, HEAT_ROWS.length - 1);
+      let col = HEAT_BUCKETS.findIndex((h) => clock < h + 2);
+      if (col < 0) col = HEAT_BUCKETS.length - 1;
+      if (clock >= HEAT_BUCKETS[0]) heat[row][col]++;
+      clock += leg.load.hours + LEG_HANDLING_HOURS;
+    });
+  }
+  const heatMax = Math.max(1, ...heat.flat());
+
+  const moves = result.moves
+    ? MOVE_LABELS.map(({ key, ko }) => {
+        const tally = result.moves![key];
+        return {
+          key,
+          ko,
+          proposed: tally.proposed,
+          accepted: tally.accepted,
+          rate: tally.proposed > 0 ? tally.accepted / tally.proposed : 0,
+        };
+      }).sort((a, b) => b.proposed - a.proposed)
+    : [];
+
+  return {
+    emptyBase: result.baseStats.emptyRatio,
+    emptyOpt: result.optStats.emptyRatio,
+    netBase: result.baseStats.avgNet,
+    netOpt: result.optStats.avgNet,
+    history: result.history,
+    legMix,
+    peakLabel: peak.label,
+    avgHours,
+    avgReturnKm,
+    perKm,
+    moves,
+    topProposed: moves.length ? moves[0].proposed : 0,
+    heat,
+    heatMax,
+    workingTours: working.length,
+    loadsServed: result.optStats.loadsServed,
+    solveMs: result.solveMs,
+  };
+}
+
+function Methodology({ result }: { result: DemoResult | null }) {
+  const [live, setLive] = useState(false);
+  const data = useMemo(() => deriveMethod(result), [result]);
+
   return (
-    <details className="methodology-summary" style={{ marginTop: 30 }}>
+    <details
+      className="methodology-summary"
+      style={{ marginTop: 30 }}
+      onToggle={(e) => setLive((e.currentTarget as HTMLDetailsElement).open)}
+    >
       <summary>
         <span>
           <b>시뮬레이션 방법론</b>
-          <small>기준선·제약·비용 범위를 확인하세요</small>
+          <small>
+            {data
+              ? `방금 실행한 회차 ${data.workingTours.toLocaleString()}건에서 직접 뽑은 지표`
+              : '기준선·제약·비용 범위를 확인하세요'}
+          </small>
         </span>
         <span className="summary-action">펼쳐보기</span>
       </summary>
-      <div className="methodology-grid">
+
+      {data ? (
+        <div className={`mth${live ? ' is-live' : ''}`}>
+          <EmptyRatioPanel data={data} live={live} />
+          <ConvergencePanel data={data} live={live} />
+          <LegMixPanel data={data} />
+          <ConstraintPanel data={data} live={live} />
+          <LedgerPanel data={data} live={live} />
+          <OperatorPanel data={data} />
+          <HeatPanel data={data} />
+        </div>
+      ) : (
+        <div className="mth-idle">
+          <p className="mth-idle-lede">
+            아래 지표는 시뮬레이션이 끝난 뒤 <b>그 실행의 결과에서 직접</b> 계산됩니다.
+            위에서 최적화를 한 번 실행하면 이 자리가 실측 그래프로 채워집니다.
+          </p>
+          <div className="mth-idle-grid">
+            <div>
+              <b>기준선</b>
+              <p>목적지를 고려하지 않고 단건 운임이 높은 화물을 먼저 잡는 선착순 게시판 모델</p>
+            </div>
+            <div>
+              <b>최적화</b>
+              <p>insert·remove·relocate·swap·reorder를 평가하는 simulated annealing</p>
+            </div>
+            <div>
+              <b>제약</b>
+              <p>
+                운행 {MAX_DUTY_HOURS}시간, 차고지 {HOME_RADIUS_KM}km 이내 복귀. 구간 수 상한은 없고
+                시계가 상한입니다
+              </p>
+            </div>
+            <div>
+              <b>포함 비용</b>
+              <p>
+                경유 {FUEL_WON_PER_KM}원/km와 통행료 {TOLL_WON_PER_KM}원/km. 보험·정비·할부와 대기비는
+                제외
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+    </details>
+  );
+}
+
+/* 01 · 공차율 */
+function EmptyRatioPanel({ data, live }: { data: MethodData; live: boolean }) {
+  const basePct = data.emptyBase * 100;
+  const optPct = data.emptyOpt * 100;
+  const drop = useCountUp(basePct - optPct, live, 1500);
+  const base = useCountUp(basePct, live);
+  const opt = useCountUp(optPct, live, 1300);
+
+  return (
+    <section className="mth-card mth-c5">
+      <header>
+        <span className="mth-n">01</span>
+        <b>공차율</b>
+        <small>기준선 대비 · 실측</small>
+      </header>
+
+      <div className="mth-hero">
+        <em>−{drop.toFixed(1)}</em>
+        <span>
+          %p
+          <small>빈 차로 달린 거리의 비중</small>
+        </span>
+      </div>
+
+      <div className="mth-vs">
         <div>
-          <b>기준선</b>
-          <p>목적지를 고려하지 않고 단건 운임이 높은 화물을 먼저 잡는 선착순 게시판 모델</p>
+          <label>
+            <span>선착순 게시판</span>
+            <b>{base.toFixed(1)}%</b>
+          </label>
+          <div className="mth-track">
+            <i className="is-empty" style={{ '--to': `${basePct}%` } as React.CSSProperties} />
+          </div>
         </div>
         <div>
-          <b>최적화</b>
-          <p>insert·remove·relocate·swap·reorder를 평가하는 simulated annealing</p>
-        </div>
-        <div>
-          <b>제약</b>
-          <p>운행 13시간, 차고지 60km 이내 복귀. 구간 수 상한은 없고 시계가 상한입니다</p>
-        </div>
-        <div>
-          <b>포함 비용</b>
-          <p>경유와 고속도로 통행료. 보험·정비·할부와 대기비는 제외</p>
+          <label>
+            <span>ZeroMile 회차</span>
+            <b>{opt.toFixed(1)}%</b>
+          </label>
+          <div className="mth-track">
+            <i
+              className="is-signal"
+              style={{ '--to': `${optPct}%`, '--delay': '0.16s' } as React.CSSProperties}
+            />
+          </div>
         </div>
       </div>
-    </details>
+
+      <p className="mth-note">
+        같은 화물 풀과 같은 도로 데이터를 두 번 풉니다. 기준선은 목적지를 보지 않고 단건 운임이 높은
+        화물부터 잡는 모델입니다.
+      </p>
+    </section>
+  );
+}
+
+/* 02 · 수렴 곡선 — the real per-frame trace */
+const CURVE_W = 680;
+const CURVE_H = 240;
+const PAD_L = 44;
+const PAD_R = 46;
+const PAD_T = 18;
+const PAD_B = 30;
+
+function tracePath(points: SolvePoint[], value: (p: SolvePoint) => number): string {
+  const values = points.map(value);
+  const lo = Math.min(...values);
+  const hi = Math.max(...values);
+  const span = hi - lo || 1;
+  return points
+    .map((point, i) => {
+      const x = PAD_L + point.p * (CURVE_W - PAD_L - PAD_R);
+      const y = CURVE_H - PAD_B - ((values[i] - lo) / span) * (CURVE_H - PAD_T - PAD_B);
+      return `${i ? 'L' : 'M'}${x.toFixed(1)} ${y.toFixed(1)}`;
+    })
+    .join(' ');
+}
+
+function ConvergencePanel({ data, live }: { data: MethodData; live: boolean }) {
+  const trace = data.history.length > 1 ? data.history : null;
+  const netPath = trace ? tracePath(trace, (p) => p.net) : '';
+  const emptyPath = trace ? tracePath(trace, (p) => p.empty) : '';
+  const gain = useCountUp(((data.netOpt - data.netBase) / Math.max(1, data.netBase)) * 100, live, 1600);
+
+  return (
+    <section className="mth-card mth-c7">
+      <header>
+        <span className="mth-n">02</span>
+        <b>담금질 수렴</b>
+        <small>
+          {data.history.length.toLocaleString()} 프레임 · {(data.solveMs / 1000).toFixed(1)}초
+        </small>
+      </header>
+
+      <div className="mth-hero mth-hero-sm">
+        <em>+{gain.toFixed(0)}</em>
+        <span>
+          %
+          <small>기사 1인 일 순수입</small>
+        </span>
+      </div>
+
+      {trace ? (
+        <svg className="mth-curve" viewBox={`0 0 ${CURVE_W} ${CURVE_H}`} aria-hidden="true">
+          {[0, 0.5, 1].map((g) => (
+            <line
+              key={g}
+              x1={PAD_L}
+              x2={CURVE_W - PAD_R}
+              y1={PAD_T + g * (CURVE_H - PAD_T - PAD_B)}
+              y2={PAD_T + g * (CURVE_H - PAD_T - PAD_B)}
+              stroke="var(--line)"
+              strokeWidth="1"
+            />
+          ))}
+          <path
+            className="mth-line mth-line-empty"
+            d={emptyPath}
+            pathLength={1}
+            fill="none"
+            stroke="var(--empty)"
+            strokeWidth="2"
+            strokeLinejoin="round"
+          />
+          <path
+            className="mth-line mth-line-net"
+            d={netPath}
+            pathLength={1}
+            fill="none"
+            stroke="var(--ink)"
+            strokeWidth="2.6"
+            strokeLinejoin="round"
+          />
+          <text x={PAD_L} y={CURVE_H - 8} className="mth-ax">
+            0
+          </text>
+          <text x={CURVE_W - PAD_R} y={CURVE_H - 8} className="mth-ax" textAnchor="end">
+            {(data.solveMs / 1000).toFixed(1)}s
+          </text>
+        </svg>
+      ) : null}
+
+      <div className="mth-legend">
+        <span className="lg-ink">
+          순수입 <b>{won(Math.round(data.netOpt))}</b>
+        </span>
+        <span className="lg-empty">
+          공차율 <b>{(data.emptyOpt * 100).toFixed(1)}%</b>
+        </span>
+      </div>
+
+      <p className="mth-note">
+        매 프레임 실제로 기록된 값입니다. 온도가 높은 초반에는 손해 보는 교환도 받아들여 지역 최적을
+        빠져나오고, 온도가 식으면서 개선되는 수만 남습니다.
+      </p>
+    </section>
+  );
+}
+
+/* 03 · 회차 길이 */
+function LegMixPanel({ data }: { data: MethodData }) {
+  const tallest = Math.max(...data.legMix.map((d) => d.pct), 1);
+
+  return (
+    <section className="mth-card mth-c4">
+      <header>
+        <span className="mth-n">03</span>
+        <b>회차 길이</b>
+        <small>구간 수 분포</small>
+      </header>
+
+      <div className="mth-cols">
+        {data.legMix.map((d, i) => (
+          <div key={d.label}>
+            <em>{d.pct.toFixed(0)}%</em>
+            <i
+              className={d.label === data.peakLabel ? 'is-peak' : undefined}
+              style={
+                {
+                  '--to': `${Math.max(2, (d.pct / tallest) * 100)}%`,
+                  '--delay': `${0.07 * i}s`,
+                } as React.CSSProperties
+              }
+            />
+            <span>{d.label}</span>
+          </div>
+        ))}
+      </div>
+
+      <p className="mth-note">
+        {data.workingTours.toLocaleString()}대가 화물을 잡았고 {data.loadsServed.toLocaleString()}건을
+        실었습니다. 구간 수에 상한은 없습니다 — 상·하차 {LEG_HANDLING_HOURS.toFixed(1)}시간과 주행
+        시간이 {MAX_DUTY_HOURS}시간을 채우는 지점이 상한입니다.
+      </p>
+    </section>
+  );
+}
+
+/* 04 · 제약 */
+function ConstraintPanel({ data, live }: { data: MethodData; live: boolean }) {
+  return (
+    <section className="mth-card mth-c4">
+      <header>
+        <span className="mth-n">04</span>
+        <b>제약</b>
+        <small>시계와 반경</small>
+      </header>
+
+      <div className="mth-dials">
+        <Dial
+          live={live}
+          value={data.avgHours}
+          max={MAX_DUTY_HOURS}
+          unit="h"
+          ko="평균 운행"
+          digits={1}
+        />
+        <Dial
+          live={live}
+          value={data.avgReturnKm}
+          max={HOME_RADIUS_KM}
+          unit="km"
+          ko="차고지 복귀"
+          digits={0}
+          delay={0.18}
+        />
+      </div>
+
+      <p className="mth-note">
+        운행 {MAX_DUTY_HOURS}시간, 마지막 하차지는 차고지 {HOME_RADIUS_KM}km 이내. 두 조건을 어기는
+        해는 점수를 매기기 전에 폐기됩니다.
+      </p>
+    </section>
+  );
+}
+
+function Dial({
+  live,
+  value,
+  max,
+  unit,
+  ko,
+  digits,
+  delay = 0,
+}: {
+  live: boolean;
+  value: number;
+  max: number;
+  unit: string;
+  ko: string;
+  digits: number;
+  delay?: number;
+}) {
+  const shown = useCountUp(value, live, 1250);
+  const r = 36;
+  const ring = 2 * Math.PI * r;
+  const used = ring * Math.min(1, value / max);
+
+  return (
+    <figure className="mth-dial">
+      <svg viewBox="0 0 100 100" aria-hidden="true">
+        <circle cx="50" cy="50" r={r} fill="none" stroke="var(--line)" strokeWidth="10" />
+        <circle
+          className="mth-sweep"
+          cx="50"
+          cy="50"
+          r={r}
+          fill="none"
+          stroke="var(--signal)"
+          strokeWidth="10"
+          transform="rotate(-90 50 50)"
+          style={
+            {
+              '--dash': `${used} ${ring}`,
+              '--ring': `${ring}`,
+              '--delay': `${delay}s`,
+            } as React.CSSProperties
+          }
+        />
+      </svg>
+      <figcaption>
+        <b>
+          {shown.toFixed(digits)}
+          <span>
+            /{max}
+            {unit}
+          </span>
+        </b>
+        <small>{ko}</small>
+      </figcaption>
+    </figure>
+  );
+}
+
+/* 05 · km당 손익 */
+function LedgerPanel({ data, live }: { data: MethodData; live: boolean }) {
+  const net = useCountUp(data.perKm.net, live, 1500);
+  const scale = Math.max(data.perKm.gross, 1);
+  const rows = [
+    { label: '운임', won: data.perKm.gross, kind: 'in' },
+    { label: '경유', won: -data.perKm.fuel, kind: 'out' },
+    { label: '통행료', won: -data.perKm.toll, kind: 'out' },
+    { label: '순이익', won: data.perKm.net, kind: 'net' },
+  ] as const;
+
+  return (
+    <section className="mth-card mth-c4">
+      <header>
+        <span className="mth-n">05</span>
+        <b>km당 손익</b>
+        <small>원 / 실주행 km</small>
+      </header>
+
+      <div className="mth-fall">
+        {rows.map((row, i) => (
+          <div key={row.label} className={`fall-${row.kind}`}>
+            <label>{row.label}</label>
+            <div className="mth-track">
+              <i
+                style={
+                  {
+                    '--to': `${(Math.abs(row.won) / scale) * 100}%`,
+                    '--delay': `${0.09 * i}s`,
+                  } as React.CSSProperties
+                }
+              />
+            </div>
+            <b>
+              {row.won < 0 ? '−' : ''}
+              {Math.round(Math.abs(row.kind === 'net' ? net : row.won)).toLocaleString()}
+            </b>
+          </div>
+        ))}
+      </div>
+
+      <p className="mth-note">
+        운임은 이번 실행의 총매출을 실제 주행거리로 나눈 값입니다. 경유와 통행료만 차감하고
+        보험·정비·할부와 대기비는 넣지 않았습니다 — 넣으면 기준선이 더 나빠지므로 빼는 쪽이
+        보수적입니다.
+      </p>
+    </section>
+  );
+}
+
+/* 06 · 이웃 연산 */
+function OperatorPanel({ data }: { data: MethodData }) {
+  if (data.moves.length === 0) return null;
+  const total = data.moves.reduce((sum, m) => sum + m.proposed, 0);
+
+  return (
+    <section className="mth-card mth-c5">
+      <header>
+        <span className="mth-n">06</span>
+        <b>이웃 연산</b>
+        <small>{(total / 1_000_000).toFixed(1)}M 회 시도</small>
+      </header>
+
+      <div className="mth-ops">
+        {data.moves.map((op, i) => (
+          <div key={op.key}>
+            <label>
+              <code>{op.key}</code>
+              <span>{op.ko}</span>
+            </label>
+            <div className="mth-track">
+              <i
+                style={
+                  {
+                    '--to': `${(op.proposed / Math.max(1, data.topProposed)) * 100}%`,
+                    '--delay': `${0.06 * i}s`,
+                  } as React.CSSProperties
+                }
+              />
+              <u
+                style={
+                  {
+                    '--to': `${(op.accepted / Math.max(1, data.topProposed)) * 100}%`,
+                    '--delay': `${0.06 * i + 0.25}s`,
+                  } as React.CSSProperties
+                }
+              />
+            </div>
+            <b>{(op.rate * 100).toFixed(1)}%</b>
+          </div>
+        ))}
+      </div>
+
+      <div className="mth-legend">
+        <span className="lg-mute">시도</span>
+        <span className="lg-ink">채택</span>
+      </div>
+
+      <p className="mth-note">
+        매 반복마다 하나를 뽑아 회차를 흔들고, 점수가 오르면 즉시 · 내려가면 그때의 온도만큼의
+        확률로 받아들입니다. 오른쪽 수치는 채택률입니다.
+      </p>
+    </section>
+  );
+}
+
+/* 07 · 구간별 출발 시각 */
+function HeatPanel({ data }: { data: MethodData }) {
+  const level = (v: number) => (v === 0 ? 0 : Math.max(1, Math.round((v / data.heatMax) * 6)));
+
+  return (
+    <section className="mth-card mth-c7">
+      <header>
+        <span className="mth-n">07</span>
+        <b>하루가 채워지는 모양</b>
+        <small>구간 순서 × 출발 시각</small>
+      </header>
+
+      <div className="mth-heat">
+        <div className="heat-grid">
+          {data.heat.map((row, r) => (
+            <div className="heat-row" key={HEAT_ROWS[r]}>
+              <span className="heat-label">{HEAT_ROWS[r]}</span>
+              {row.map((v, c) => (
+                <i
+                  key={c}
+                  data-v={level(v)}
+                  style={{ '--delay': `${(r + c) * 0.03}s` } as React.CSSProperties}
+                  title={`${HEAT_BUCKETS[c]}시 · ${v}건`}
+                />
+              ))}
+            </div>
+          ))}
+          <div className="heat-row heat-axis">
+            <span className="heat-label" />
+            {HEAT_BUCKETS.map((h) => (
+              <em key={h}>{h}</em>
+            ))}
+          </div>
+        </div>
+        <div className="heat-key">
+          <span>적음</span>
+          {[0, 1, 2, 3, 4, 5, 6].map((v) => (
+            <i key={v} data-v={v} />
+          ))}
+          <span>많음</span>
+        </div>
+      </div>
+
+      <p className="mth-note">
+        각 회차의 n번째 구간이 실제로 출발하는 시각입니다 (06:00 차고지 출발 기준, 접근 공차는 시속
+        {APPROACH_KMH}km로 환산). 오른쪽 아래가 채워질수록 하루가 끝까지 이어붙었다는 뜻입니다.
+      </p>
+    </section>
   );
 }
 
