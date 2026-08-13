@@ -110,6 +110,8 @@ type Move = 'insert' | 'remove' | 'relocate' | 'swap' | 'reorder';
 export type RouteLock = {
   loadIds: number[];
   driverId: number;
+  /** Guaranteed corridor loads, ordered from the exact start to the garage. */
+  seedLoadIds?: number[];
   /** Available driving + handling time for the user's vehicle. */
   maxHours?: number;
   /** Hard payload ceiling for every load assigned to the user's vehicle. */
@@ -163,6 +165,7 @@ export class TourOptimizer {
   private currentMove: Move = 'insert';
   private budget: number;
   private lockedLoadIds = new Set<number>();
+  private lockedSeedLoadIds: number[];
   private lockedDriverId: number | null;
   private lockedMaxHours: number;
   private lockedMaxTons: number;
@@ -183,6 +186,7 @@ export class TourOptimizer {
     this.loads = loads;
     this.budget = budget;
     this.lockedLoadIds = new Set(locked?.loadIds ?? []);
+    this.lockedSeedLoadIds = locked?.seedLoadIds ?? [];
     this.lockedDriverId = locked?.driverId ?? null;
     this.lockedMaxHours = locked?.maxHours ?? MAX_DUTY_HOURS;
     this.lockedMaxTons = locked?.maxTons ?? Infinity;
@@ -348,6 +352,27 @@ export class TourOptimizer {
     /* Every feasible day the beam touches, keyed by its load set so the same
        three loads in a different order count once. */
     const feasible = new Map<string, Tour>();
+
+    // The board is synthetic and its random draw must never make a valid pair
+    // of locations unsolvable. Keep the deterministic corridor as a certified
+    // candidate, then let the beam beat it with any better combination it can
+    // find from the full board.
+    const seedLoads = this.lockedSeedLoadIds
+      .map((id) => this.loadById.get(id))
+      .filter((load): load is Load => Boolean(load));
+    if (seedLoads.length >= this.lockedMinLegs) {
+      const seeded = settle(
+        driver,
+        seedLoads.map((load) => ({ load, deadheadKm: 0 })),
+      );
+      if (
+        seeded.hours <= this.lockedMaxHours &&
+        seeded.loadedKm + seeded.emptyKm <= this.lockedMaxKm &&
+        seeded.returnKm <= HOME_RADIUS_KM
+      ) {
+        feasible.set(seedLoads.map((load) => load.id).join(','), seeded);
+      }
+    }
 
     // Depth runs until the day is full: a chain stops growing when no load can
     // be appended without busting the hours, the corridor budget or the drive

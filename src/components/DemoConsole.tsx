@@ -12,7 +12,7 @@ import KoreaMap from './KoreaMap';
 import { useTheme } from '../lib/theme';
 import { Check, Spark, useEased } from './ui';
 import { CITIES } from '../lib/geo';
-import { generateDrivers, generateLoads } from '../lib/generate';
+import { generateDrivers, generateLoads, generateRouteBridgeLoads } from '../lib/generate';
 import { primarySite, SITE_BY_ID, SITES, siteLabel } from '../lib/sites';
 import {
   HANDLING_HOURS,
@@ -334,14 +334,34 @@ export default function DemoConsole({
   const [hoveredDriverId, setHoveredDriverId] = useState<number | null>(null);
   const [selectedMapLoadId, setSelectedMapLoadId] = useState<number | null>(null);
   const [loadOptions, setLoadOptions] = useState<Record<number, string>>({});
+  const [registeredLoadIds, setRegisteredLoadIds] = useState<number[]>([]);
   const [pendingOptimize, setPendingOptimize] = useState(false);
 
-  const { drivers, loads, baseline, baseStats, locked } = useMemo(() => {
-    const loads = generateLoads(config.loads, config.seed);
+  const { drivers, baseLoads, loads, baseline, baseStats, locked } = useMemo(() => {
+    const baseLoads = generateLoads(config.loads, config.seed);
+    let loads = baseLoads;
     const driverSeed = config.id === 'standard' ? 77001 : config.seed + 701;
     let drivers = generateDrivers(config.drivers, driverSeed);
 
     if (appliedRoute) {
+      const startSite = primarySite(appliedRoute.current).id;
+      const homeSite = primarySite(appliedRoute.returnDepot).id;
+      const maxHours = Math.min(
+        appliedRoute.constraints.maxDriveHours,
+        appliedRoute.constraints.deadlineHour - appliedRoute.constraints.startHour,
+      );
+      loads = [
+        ...baseLoads,
+        ...generateRouteBridgeLoads({
+          startSite,
+          homeSite,
+          maxHours,
+          maxTons: appliedRoute.constraints.truckTons,
+          goods: bridgeGoods(appliedRoute.constraints.cargoType),
+          idStart: baseLoads.length,
+          seed: config.seed,
+        }),
+      ];
       drivers = [
         {
           ...drivers[0],
@@ -372,10 +392,11 @@ export default function DemoConsole({
       locked = {
         loadIds: [],
         driverId: drivers[0].id,
+        seedLoadIds: loads.slice(baseLoads.length).map((load) => load.id),
         maxHours,
         maxTons: appliedRoute.constraints.truckTons,
         maxKm: routeCorridorBudgetKm(startSite, homeSite, maxHours),
-        minLegs: 3,
+        minLegs: Math.max(1, loads.length - baseLoads.length),
         allowedLoadIds: loads
           .filter((load) =>
             canCarryLoad(
@@ -390,6 +411,7 @@ export default function DemoConsole({
 
     return {
       drivers,
+      baseLoads,
       loads,
       baseline,
       locked,
@@ -438,13 +460,16 @@ export default function DemoConsole({
     () => {
       if (phase !== 'done' || !appliedRoute) return [];
       return routeOptions
-        .filter((tour) => tour.legs.length >= 3 && tour.returnKm <= HOME_RADIUS_KM)
+        .filter(
+          (tour) =>
+            tour.legs.length >= (locked?.minLegs ?? 1) && tour.returnKm <= HOME_RADIUS_KM,
+        )
         .map((tour, index) => ({
           ...tour,
           driver: { ...tour.driver, id: OPTION_ID_BASE + index },
         }));
     },
-    [phase, appliedRoute, routeOptions],
+    [phase, appliedRoute, routeOptions, locked],
   );
 
   const selectedTours = useMemo(
@@ -506,6 +531,7 @@ export default function DemoConsole({
     setDetailDriverId(null);
     setSelectedMapLoadId(null);
     setLoadOptions({});
+    setRegisteredLoadIds([]);
 
     sigRef.current = new Map(
       baseline.map((t) => [t.driver.id, { legs: t.legs.length, net: t.net }]),
@@ -663,6 +689,7 @@ export default function DemoConsole({
     setDetailDriverId(null);
     setSelectedMapLoadId(null);
     setLoadOptions({});
+    setRegisteredLoadIds([]);
     setFeed([]);
     setHistory([]);
     setTours(baseline);
@@ -683,6 +710,7 @@ export default function DemoConsole({
     setDetailDriverId(null);
     setSelectedMapLoadId(null);
     setLoadOptions({});
+    setRegisteredLoadIds([]);
     setFeed([]);
     setHistory([]);
     setTours(baseline);
@@ -734,6 +762,23 @@ export default function DemoConsole({
       : null;
   const displayedRoute = selectedTours[0] ?? loadingTour;
   const loadingPlan = loadingTour ? buildLoadingPlan(loadingTour, ko, loadOptions) : [];
+  const loadingTourKey = loadingTour
+    ? `${loadingTour.driver.id}:${loadingTour.legs.map((leg) => leg.load.id).join('-')}`
+    : '';
+  const modelTour = useMemo(
+    () =>
+      loadingTour
+        ? {
+            ...loadingTour,
+            legs: loadingTour.legs.filter((leg) => registeredLoadIds.includes(leg.load.id)),
+          }
+        : null,
+    [loadingTour, registeredLoadIds],
+  );
+
+  useEffect(() => {
+    setRegisteredLoadIds([]);
+  }, [loadingTourKey]);
 
   /**
    * The envelope the map floods during the solve. It's a function of exactly
@@ -762,7 +807,19 @@ export default function DemoConsole({
         routeDraft.constraints.maxDriveHours,
         routeDraft.constraints.deadlineHour - routeDraft.constraints.startHour,
       );
-      return loads.filter(
+      const previewLoads = [
+        ...baseLoads,
+        ...generateRouteBridgeLoads({
+          startSite,
+          homeSite,
+          maxHours,
+          maxTons: routeDraft.constraints.truckTons,
+          goods: bridgeGoods(routeDraft.constraints.cargoType),
+          idStart: baseLoads.length,
+          seed: config.seed,
+        }),
+      ];
+      return previewLoads.filter(
         (load) =>
           canCarryLoad(
             load,
@@ -771,12 +828,18 @@ export default function DemoConsole({
           ) && isRouteRelevant(load, startSite, homeSite, maxHours),
       );
     },
-    [loads, routeDraft],
+    [baseLoads, config.seed, routeDraft],
   );
   const recommendedGoods = [...new Set(recommendedLoads.map((load) => load.goods))].slice(0, 3);
   const selectedLoadingItem = loadingPlan.find(
     (item) => item.load.id === selectedMapLoadId,
   ) ?? null;
+  const registerLoad = useCallback((loadId: number, option: string) => {
+    setLoadOptions((current) => ({ ...current, [loadId]: option }));
+    setRegisteredLoadIds((current) =>
+      current.includes(loadId) ? current : [...current, loadId],
+    );
+  }, []);
 
   const runOptimization = useCallback(() => {
     if (phase === 'running' || !hasRouteInput) return;
@@ -885,8 +948,7 @@ export default function DemoConsole({
       if (preset) setPresetId(preset.id);
     },
     focusLoad: setSelectedMapLoadId,
-    setLoadTreatment: (loadId, treatment) =>
-      setLoadOptions((options) => ({ ...options, [loadId]: treatment })),
+    setLoadTreatment: (loadId, treatment) => registerLoad(loadId, treatment),
   });
 
   const statusTone =
@@ -1505,18 +1567,13 @@ export default function DemoConsole({
 
             {selectedLoadingItem && (
               <CargoLoadDetail
+                key={selectedLoadingItem.load.id}
                 item={selectedLoadingItem}
                 selectedOption={selectedLoadingItem.selectedOption}
+                registered={registeredLoadIds.includes(selectedLoadingItem.load.id)}
                 truckTons={routeDraft.constraints.truckTons}
                 totalTons={loadingPlan.reduce((sum, item) => sum + item.load.tons, 0)}
-                onSelectOption={(option) =>
-                  {
-                    setLoadOptions((current) => ({
-                      ...current,
-                      [selectedLoadingItem.load.id]: option,
-                    }));
-                  }
-                }
+                onAdd={(option) => registerLoad(selectedLoadingItem.load.id, option)}
                 onClose={() => setSelectedMapLoadId(null)}
               />
             )}
@@ -1542,7 +1599,7 @@ export default function DemoConsole({
                   </small>
                 ) : (
                   <small>
-                    실을 수 있는 화물은 {eligibleLoadCount}건 있지만, 3개 이상 연쇄하면서
+                    실을 수 있는 화물은 {eligibleLoadCount}건 있지만, {locked?.minLegs ?? 1}개 이상 연쇄하면서
                     차고지 {HOME_RADIUS_KM}km 이내로 복귀하는 순서가 없습니다. 운행 시간을 늘리거나
                     복귀 차고지를 옮겨보세요.
                   </small>
@@ -1721,7 +1778,8 @@ export default function DemoConsole({
               vehicleType={routeDraft.constraints.vehicleType}
               cargoCondition={routeDraft.constraints.cargoType}
               truckTons={routeDraft.constraints.truckTons}
-              tour={appliedRoute && routeChanged ? null : loadingTour}
+              tour={appliedRoute && routeChanged ? null : modelTour}
+              totalLoadCount={loadingPlan.length}
               phase={phase}
               cityName={ko}
               loadOptions={loadOptions}
@@ -1881,20 +1939,29 @@ export default function DemoConsole({
 function CargoLoadDetail({
   item,
   selectedOption,
+  registered,
   truckTons,
   totalTons,
-  onSelectOption,
+  onAdd,
   onClose,
 }: {
   item: LoadingPlanItem;
   selectedOption?: string;
+  registered: boolean;
   truckTons: number;
   totalTons: number;
-  onSelectOption: (option: string) => void;
+  onAdd: (option: string) => void;
   onClose: () => void;
 }) {
   const options = loadTreatmentOptions(item.load);
+  const [pendingOption, setPendingOption] = useState(selectedOption ?? options[0]);
   const side = item.deckSide === 'center' ? '차축 중앙' : item.deckSide === 'left' ? '좌측 하단' : '우측 하단';
+  const alreadyApplied = registered && pendingOption === selectedOption;
+
+  useEffect(() => {
+    if (selectedOption) setPendingOption(selectedOption);
+  }, [selectedOption]);
+
   return (
     <aside className="cargo-detail" aria-label={`${item.load.goods} 화물 상세정보`}>
       <div className="cargo-detail-head">
@@ -1914,23 +1981,31 @@ function CargoLoadDetail({
       </dl>
       <div className="cargo-option-title">
         <b>적재 방식 선택</b>
-        <span>선택하면 상차 {item.loadOrder}에 등록</span>
+        <span>옵션 선택 후 추가해야 모델에 표시됩니다</span>
       </div>
       <div className="cargo-options" role="group" aria-label="화물 적재 방식">
         {options.map((option) => (
           <button
             type="button"
             key={option}
-            className={selectedOption === option ? 'selected' : ''}
-            aria-pressed={selectedOption === option}
-            onClick={() => onSelectOption(option)}
+            className={pendingOption === option ? 'selected' : ''}
+            aria-pressed={pendingOption === option}
+            onClick={() => setPendingOption(option)}
           >
             <i />
             <span>{option}</span>
-            <small>{selectedOption === option ? `상차 ${item.loadOrder} 등록됨` : '선택'}</small>
+            <small>{pendingOption === option ? '선택됨' : '선택'}</small>
           </button>
         ))}
       </div>
+      <button
+        type="button"
+        className="cargo-add-action"
+        disabled={alreadyApplied}
+        onClick={() => onAdd(pendingOption)}
+      >
+        {alreadyApplied ? '모델에 등록됨' : registered ? '옵션 업데이트' : '모델에 추가'}
+      </button>
       <p className="cargo-balance-note">
         중량 순위 {item.weightRank}위 · 고정 예상 {item.secureMinutes}분 · {item.placementReason}
       </p>
@@ -2183,6 +2258,12 @@ const NOMINAL_KMH = 65;
 function routeCorridorBudgetKm(startSite: string, homeSite: string, maxHours: number) {
   const directKm = km(startSite, homeSite);
   return Math.max(directKm * 2 + 380, maxHours * NOMINAL_KMH);
+}
+
+function bridgeGoods(cargoType: CargoCondition): string {
+  if (cargoType === '냉장·냉동') return '냉장식품';
+  if (cargoType === '취급주의') return '전자부품';
+  return '생활용품';
 }
 
 function nearestLocation(latitude: number, longitude: number) {

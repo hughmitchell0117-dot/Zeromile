@@ -7,8 +7,8 @@
  */
 
 import { CITIES } from './geo';
-import { hrs, km as roadKm, type Driver, type Load } from './model';
-import { bayFor, pickSite } from './sites';
+import { LEG_HANDLING_HOURS, hrs, km as roadKm, type Driver, type Load } from './model';
+import { SITE_BY_ID, SITES, bayFor, pickSite } from './sites';
 
 export function mulberry32(seed: number): () => number {
   let a = seed >>> 0;
@@ -30,6 +30,119 @@ const DRIVER_NAMES = [
   '김', '이', '박', '최', '정', '강', '조', '윤', '장', '임',
   '한', '오', '서', '신', '권', '황', '안', '송', '류', '홍',
 ];
+
+export type RouteBridgeOptions = {
+  startSite: string;
+  homeSite: string;
+  maxHours: number;
+  maxTons: number;
+  goods: string;
+  idStart: number;
+  seed?: number;
+};
+
+/**
+ * Add a small, deterministic corridor to the synthetic freight board so every
+ * valid start/garage pair has something the optimiser can close. The normal
+ * board remains the search space; these loads only guarantee that its random
+ * draw cannot make a perfectly valid location pair return an empty result.
+ */
+export function generateRouteBridgeLoads({
+  startSite,
+  homeSite,
+  maxHours,
+  maxTons,
+  goods,
+  idStart,
+  seed = 918_273,
+}: RouteBridgeOptions): Load[] {
+  if (!SITE_BY_ID[startSite] || !SITE_BY_ID[homeSite]) return [];
+
+  const directHours = hrs(startSite, homeSite);
+  const legCount = Math.min(
+    3,
+    Math.max(0, Math.floor((maxHours - directHours + 1e-6) / LEG_HANDLING_HOURS)),
+  );
+  if (legCount === 0) return [];
+
+  let stops = corridorStops(startSite, homeSite, legCount);
+  const routeHours = stops.slice(0, -1).reduce(
+    (total, stop, index) => total + hrs(stop, stops[index + 1]),
+    legCount * LEG_HANDLING_HOURS,
+  );
+  // A geographically close waypoint can still sit across a mountain or bay.
+  // Fall back to zero-detour dock transfers rather than breaking the clock.
+  if (routeHours > maxHours + 1e-6) stops = zeroDetourStops(startSite, homeSite, legCount);
+
+  const rand = mulberry32(seed + idStart * 17 + startSite.length * 31 + homeSite.length * 43);
+  return stops.slice(0, -1).map((fromSite, index) => {
+    const toSite = stops[index + 1];
+    const origin = SITE_BY_ID[fromSite];
+    const destination = SITE_BY_ID[toSite];
+    const distance = roadKm(fromSite, toSite);
+    const tons = Math.max(1, Math.min(maxTons, 1 + (index % 3)));
+    const revenue =
+      Math.round(((62_000 + distance * 1_015) * (0.96 + index * 0.03)) / 1_000) * 1_000;
+    return {
+      id: idStart + index,
+      from: origin.cityId,
+      to: destination.cityId,
+      fromSite,
+      toSite,
+      fromBay: bayFor(origin, rand),
+      toBay: bayFor(destination, rand),
+      ref: `ZR-${String(idStart + index + 1).padStart(6, '0')}`,
+      km: distance,
+      hours: hrs(fromSite, toSite),
+      revenue,
+      shipperPrice: Math.round(revenue / 0.76 / 1_000) * 1_000,
+      tons,
+      goods,
+    };
+  });
+}
+
+function corridorStops(startSite: string, homeSite: string, legCount: number): string[] {
+  if (legCount === 1) return [startSite, homeSite];
+  if (startSite === homeSite) {
+    const nearby = SITES
+      .filter((site) => site.id !== startSite)
+      .sort((a, b) => hrs(startSite, a.id) - hrs(startSite, b.id))
+      .slice(0, legCount - 1)
+      .map((site) => site.id);
+    return [startSite, ...nearby, homeSite];
+  }
+
+  const directHours = Math.max(hrs(startSite, homeSite), 0.01);
+  const used = new Set([startSite, homeSite]);
+  const waypoints: string[] = [];
+  for (let step = 1; step < legCount; step++) {
+    const targetProgress = step / legCount;
+    const candidate = SITES
+      .filter((site) => !used.has(site.id))
+      .map((site) => {
+        const fromStart = hrs(startSite, site.id);
+        const detour = Math.max(0, fromStart + hrs(site.id, homeSite) - directHours);
+        const score = Math.abs(fromStart / directHours - targetProgress) * 2 + detour / directHours;
+        return { id: site.id, score };
+      })
+      .sort((a, b) => a.score - b.score)[0];
+    if (!candidate) break;
+    used.add(candidate.id);
+    waypoints.push(candidate.id);
+  }
+  return waypoints.length === legCount - 1
+    ? [startSite, ...waypoints, homeSite]
+    : zeroDetourStops(startSite, homeSite, legCount);
+}
+
+function zeroDetourStops(startSite: string, homeSite: string, legCount: number): string[] {
+  return Array.from({ length: legCount + 1 }, (_, index) => {
+    if (index === 0) return startSite;
+    if (index === legCount) return homeSite;
+    return index < legCount / 2 ? startSite : homeSite;
+  });
+}
 
 /** Cumulative weight table for gravity-proportional city sampling. */
 function weightedPicker(rand: () => number) {

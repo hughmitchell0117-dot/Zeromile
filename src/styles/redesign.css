@@ -269,6 +269,22 @@ body {
   transform: translateY(-1px);
 }
 
+.zm-wordmark-logo {
+  display: block;
+  flex: none;
+  align-self: center;
+  width: 22px;
+  height: 22px;
+  object-fit: cover;
+  object-position: center;
+  mix-blend-mode: multiply;
+}
+
+:root[data-theme='dark'] .zm-wordmark-logo {
+  filter: invert(1);
+  mix-blend-mode: screen;
+}
+
 .zm-mast-meta {
   display: none;
 }
@@ -481,7 +497,7 @@ body {
 }
 
 .zm-h1 {
-  font-size: clamp(46px, 8.6vw, 118px);
+  font-size: clamp(44px, 7.8vw, 108px);
   line-height: 0.94;
   letter-spacing: -0.055em;
   font-weight: 800;

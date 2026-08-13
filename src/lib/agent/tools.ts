@@ -223,17 +223,17 @@ export const TOOL_DECLARATIONS: ToolDeclaration[] = [
  * did is then still below the fold, and the recording shows a title card while
  * the interesting part happens off screen.
  */
-/**
- * `nudge` is extra downward scroll past the top of the insert. The console is
- * taller than most viewports, so pinning its top under the nav leaves the
- * optimize row and the map hanging below the fold — which is the half worth
- * filming. Scrolling a little further trades the console's header, which says
- * nothing, for its controls, which are the demo. Tune these two numbers if the
- * framing is off on the recording machine; nothing else depends on them.
- */
-const SECTION_FOCUS: Record<string, { selector: string; nudge: number }> = {
-  lab: { selector: '.ops', nudge: 210 },
-  driver: { selector: '.phone', nudge: 40 },
+type SectionFocus = {
+  selector: string;
+  align: 'start' | 'center';
+  nudge?: number;
+};
+
+const SECTION_FOCUS: Record<string, SectionFocus> = {
+  // Centre the map itself in the usable viewport. A fixed offset made the
+  // agent overshoot on shorter screens and hid the upper half of the map.
+  lab: { selector: '.ops-canvas', align: 'center' },
+  driver: { selector: '.phone', align: 'start', nudge: 40 },
 };
 
 function scrollToSection(section: HTMLElement, id: string) {
@@ -246,7 +246,12 @@ function scrollToSection(section: HTMLElement, id: string) {
 
   // The masthead is sticky, so it eats the top of anything aligned to zero.
   const mast = document.querySelector('.zm-mast')?.getBoundingClientRect().height ?? 64;
-  const top = window.scrollY + target.getBoundingClientRect().top - mast - 12 + focus.nudge;
+  const viewportTop = mast + 12;
+  const rect = target.getBoundingClientRect();
+  const top =
+    focus.align === 'center'
+      ? window.scrollY + rect.top + rect.height / 2 - (viewportTop + window.innerHeight) / 2
+      : window.scrollY + rect.top - viewportTop + (focus.nudge ?? 0);
 
   window.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
 }

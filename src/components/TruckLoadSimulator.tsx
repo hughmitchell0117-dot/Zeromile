@@ -96,6 +96,7 @@ export default function TruckLoadSimulator({
   cargoCondition,
   truckTons,
   tour,
+  totalLoadCount = 0,
   phase,
   cityName,
   loadOptions = {},
@@ -108,6 +109,7 @@ export default function TruckLoadSimulator({
   cargoCondition: CargoCondition;
   truckTons: number;
   tour: Tour | null;
+  totalLoadCount?: number;
   phase: Phase;
   cityName: (id: string) => string;
   loadOptions?: Record<number, string>;
@@ -475,11 +477,11 @@ export default function TruckLoadSimulator({
         <span style={{ width: `${maxTimeline ? (timeline / maxTimeline) * 100 : 0}%` }} />
       </div>
 
-      {plan.length > 0 && (
+      {totalLoadCount > 0 && (
         <div className="truck-sim-gate">
           <div>
-            <b>최적화 화물 {plan.length}건 · 상자 {plan.length}개 자동 등록</b>
-            <span>각 상자에 권장 적재 방식이 적용됐습니다.</span>
+            <b>등록 화물 {plan.length}/{totalLoadCount}건</b>
+            <span>지도에서 화물을 선택하고 옵션을 확정하면 상자가 추가됩니다.</span>
           </div>
           <button
             type="button"
@@ -538,8 +540,18 @@ export default function TruckLoadSimulator({
         </ol>
       ) : (
         <p className={`load-empty${invalidCombination ? ' invalid' : ''}`}>
-          <b>{phase === 'running' ? '최적 적재 순서를 계산 중입니다.' : '회차 확정 후 화물이 적재됩니다.'}</b>
-          <span>{compatibilityNote(vehicleType, cargoCondition)}</span>
+          <b>
+            {phase === 'running'
+              ? '최적 적재 순서를 계산 중입니다.'
+              : totalLoadCount > 0
+                ? '지도에서 화물을 선택해 모델에 추가하세요.'
+                : '회차 확정 후 화물을 선택할 수 있습니다.'}
+          </b>
+          <span>
+            {totalLoadCount > 0
+              ? '적재 옵션을 고른 뒤 추가 버튼을 눌러야 상자가 표시됩니다.'
+              : compatibilityNote(vehicleType, cargoCondition)}
+          </span>
         </p>
       )}
 
@@ -573,7 +585,7 @@ export default function TruckLoadSimulator({
 
       <p className="truck-rule">
         <b>적재 원칙</b>
-        상자 {plan.length}/{plan.length}개 · 적재 {plan.reduce((sum, item) => sum + item.load.tons, 0)}t · 첫 하역지를 후문에, 뒤 하역지를 안쪽에 배치합니다.
+        상자 {plan.length}/{totalLoadCount}개 · 적재 {plan.reduce((sum, item) => sum + item.load.tons, 0)}t · 동일 화물은 한 번만 등록됩니다.
       </p>
     </section>
   );
