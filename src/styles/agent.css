@@ -1,0 +1,469 @@
+/* ── Agent · spotlight panel ──────────────────────────────────────────── */
+/*
+ * Everything here is built on --scrim-rgb and --wash-rgb, the two tokens the
+ * redesign layer flips between carbon and paper. So the panel is theme-aware
+ * without a single [data-theme] override of its own.
+ */
+
+/* The masthead key */
+.zm-agent-key {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 30px;
+  padding: 0 11px 0 9px;
+  border: 1px solid var(--line-2);
+  border-radius: 999px;
+  background: rgba(var(--wash-rgb), 0.04);
+  color: var(--ink-2);
+  font: 600 10px/1 var(--mono);
+  letter-spacing: 0.14em;
+  cursor: pointer;
+  transition:
+    color 0.22s var(--ease),
+    border-color 0.22s var(--ease),
+    background 0.22s var(--ease);
+}
+
+.zm-agent-key:hover {
+  color: var(--ink);
+  border-color: var(--line-2);
+  background: rgba(var(--wash-rgb), 0.08);
+}
+
+.zm-agent-key.armed {
+  color: var(--kakao-brown);
+  background: var(--yellow);
+  border-color: var(--yellow);
+}
+
+.zm-agent-key-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--ink-4);
+  transition: background 0.22s var(--ease);
+}
+
+.zm-agent-key.armed .zm-agent-key-dot {
+  background: var(--kakao-brown);
+  animation: zm-agent-pulse 1.8s var(--ease) infinite;
+}
+
+@keyframes zm-agent-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.35;
+    transform: scale(0.72);
+  }
+}
+
+@media (max-width: 720px) {
+  .zm-agent-key-label {
+    display: none;
+  }
+  .zm-agent-key {
+    padding: 0 9px;
+  }
+}
+
+/* The panel */
+.zm-agent-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 240;
+  pointer-events: none;
+}
+
+.zm-agent {
+  pointer-events: auto;
+  position: absolute;
+  left: 50%;
+  top: 13vh;
+  width: min(560px, calc(100vw - 24px));
+  display: flex;
+  flex-direction: column;
+  border-radius: 26px;
+  border: 1px solid rgba(var(--wash-rgb), 0.13);
+  background: rgba(var(--scrim-rgb), 0.62);
+  backdrop-filter: blur(30px) saturate(1.5);
+  -webkit-backdrop-filter: blur(30px) saturate(1.5);
+  box-shadow:
+    0 1px 0 rgba(var(--wash-rgb), 0.09) inset,
+    0 30px 80px -28px rgba(0, 0, 0, 0.62),
+    0 2px 10px -4px rgba(0, 0, 0, 0.4);
+  overflow: hidden;
+  animation: zm-agent-in 0.34s var(--ease) both;
+}
+
+@keyframes zm-agent-in {
+  from {
+    opacity: 0;
+    filter: blur(6px);
+  }
+}
+
+/* The brand hairline: one yellow thread across the top edge. */
+.zm-agent::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: 1px;
+  background: linear-gradient(
+    to right,
+    transparent,
+    var(--yellow) 22%,
+    var(--yellow) 78%,
+    transparent
+  );
+  opacity: 0.5;
+}
+
+/* Listening and speaking both breathe, at different rates. */
+.zm-agent.hearing {
+  border-color: rgba(254, 229, 0, 0.35);
+  box-shadow:
+    0 1px 0 rgba(var(--wash-rgb), 0.09) inset,
+    0 0 0 4px rgba(254, 229, 0, 0.07),
+    0 30px 80px -28px rgba(0, 0, 0, 0.62);
+}
+
+.zm-agent.speaking {
+  border-color: rgba(254, 229, 0, 0.22);
+}
+
+.zm-agent-bar {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 13px 13px 11px 15px;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.zm-agent-bar:active {
+  cursor: grabbing;
+}
+
+.zm-agent-orb {
+  width: 34px;
+  height: 34px;
+  flex: none;
+}
+
+.zm-agent-id {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.zm-agent-id b {
+  font: 600 12.5px/1.2 var(--sans);
+  color: var(--ink);
+  letter-spacing: -0.01em;
+}
+
+.zm-agent-id span {
+  font: 500 10px/1 var(--mono);
+  letter-spacing: 0.08em;
+  color: var(--ink-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.zm-agent-x {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  background: rgba(var(--wash-rgb), 0.04);
+  color: var(--ink-3);
+  font-size: 11px;
+  cursor: pointer;
+  transition: color 0.2s var(--ease);
+}
+
+.zm-agent-x:hover {
+  color: var(--ink);
+}
+
+.zm-agent-scroll {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: min(48vh, 420px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 4px 15px 14px;
+  scrollbar-width: thin;
+}
+
+.zm-agent-msg {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 88%;
+  animation: zm-agent-msg-in 0.28s var(--ease) both;
+}
+
+@keyframes zm-agent-msg-in {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+}
+
+.zm-agent-msg p {
+  margin: 0;
+  padding: 9px 12px;
+  border-radius: 15px;
+  font: 400 13.5px/1.62 var(--sans);
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
+.zm-agent-msg.agent {
+  align-self: flex-start;
+}
+
+.zm-agent-msg.agent p {
+  background: rgba(var(--wash-rgb), 0.055);
+  border: 1px solid rgba(var(--wash-rgb), 0.06);
+  border-bottom-left-radius: 5px;
+  color: var(--ink);
+}
+
+.zm-agent-msg.user {
+  align-self: flex-end;
+}
+
+.zm-agent-msg.user p {
+  background: var(--yellow);
+  color: var(--kakao-brown);
+  border-bottom-right-radius: 5px;
+  font-weight: 500;
+}
+
+.zm-agent-msg.interim p {
+  background: rgba(254, 229, 0, 0.16);
+  color: var(--ink-2);
+  font-style: italic;
+}
+
+.zm-agent-msg.err p {
+  background: var(--empty-dim);
+  border: 1px solid rgba(240, 103, 79, 0.3);
+  color: var(--ink);
+}
+
+/* Tool chips — the agent visibly working the site */
+.zm-agent-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.zm-agent-tool {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px 3px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: rgba(var(--wash-rgb), 0.035);
+  font: 500 9.5px/1 var(--mono);
+  letter-spacing: 0.06em;
+  color: var(--ink-3);
+  animation: zm-agent-msg-in 0.24s var(--ease) both;
+}
+
+.zm-agent-tool i {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--yellow);
+  animation: zm-agent-pulse 1s var(--ease) infinite;
+}
+
+.zm-agent-tool.done {
+  color: var(--ink-2);
+}
+
+.zm-agent-tool.done i {
+  animation: none;
+  background: var(--green);
+}
+
+.zm-agent-tool.failed i {
+  animation: none;
+  background: var(--empty);
+}
+
+.zm-agent-dots {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.zm-agent-dots i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--ink-3);
+  animation: zm-agent-bounce 1.15s var(--ease) infinite;
+}
+
+.zm-agent-dots i:nth-child(2) {
+  animation-delay: 0.14s;
+}
+
+.zm-agent-dots i:nth-child(3) {
+  animation-delay: 0.28s;
+}
+
+@keyframes zm-agent-bounce {
+  0%,
+  70%,
+  100% {
+    opacity: 0.28;
+    transform: translateY(0);
+  }
+  35% {
+    opacity: 1;
+    transform: translateY(-3px);
+  }
+}
+
+.zm-agent-warn {
+  margin: 0;
+  padding: 9px 11px;
+  border-radius: 12px;
+  background: var(--empty-dim);
+  border: 1px solid rgba(240, 103, 79, 0.28);
+  font: 400 11.5px/1.6 var(--sans);
+  color: var(--ink-2);
+}
+
+.zm-agent-warn code {
+  font: 500 10.5px/1 var(--mono);
+  color: var(--ink);
+}
+
+.zm-agent-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding-top: 2px;
+}
+
+.zm-agent-chips button {
+  padding: 6px 11px;
+  border-radius: 999px;
+  border: 1px solid var(--line-2);
+  background: transparent;
+  color: var(--ink-2);
+  font: 400 11.5px/1 var(--sans);
+  cursor: pointer;
+  transition:
+    color 0.2s var(--ease),
+    border-color 0.2s var(--ease);
+}
+
+.zm-agent-chips button:hover {
+  color: var(--ink);
+  border-color: var(--yellow);
+}
+
+/* Input */
+.zm-agent-input {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  padding: 11px 12px 11px 15px;
+  border-top: 1px solid rgba(var(--wash-rgb), 0.07);
+  background: rgba(var(--well-rgb), 0.16);
+}
+
+.zm-agent-input textarea {
+  flex: 1;
+  resize: none;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font: 400 13.5px/1.5 var(--sans);
+  max-height: 96px;
+  padding: 5px 0;
+}
+
+.zm-agent-input textarea:focus {
+  outline: none;
+}
+
+.zm-agent-input textarea::placeholder {
+  color: var(--ink-4);
+}
+
+.zm-agent-input button {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 0;
+  background: var(--yellow);
+  color: var(--kakao-brown);
+  font-size: 13px;
+  cursor: pointer;
+  transition: opacity 0.2s var(--ease);
+}
+
+.zm-agent-input button:disabled {
+  opacity: 0.28;
+  cursor: default;
+}
+
+.zm-agent-foot {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 15px 10px;
+  font: 500 9px/1 var(--mono);
+  letter-spacing: 0.1em;
+  color: var(--ink-4);
+}
+
+.zm-agent-mark {
+  color: var(--ink-3);
+}
+
+@media (max-width: 560px) {
+  .zm-agent {
+    top: auto;
+    bottom: 12px;
+    width: calc(100vw - 16px);
+  }
+  .zm-agent-scroll {
+    max-height: 44vh;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .zm-agent,
+  .zm-agent-msg,
+  .zm-agent-tool {
+    animation: none;
+  }
+  .zm-agent-key.armed .zm-agent-key-dot,
+  .zm-agent-tool i,
+  .zm-agent-dots i {
+    animation: none;
+  }
+}

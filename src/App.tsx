@@ -6,6 +6,7 @@ import DemoConsole, {
 } from './components/DemoConsole';
 import DriverPhone from './components/DriverPhone';
 import KoreaMap from './components/KoreaMap';
+import Agent, { AgentLauncher } from './components/Agent';
 import { useTheme, type Theme } from './lib/theme';
 import { Reveal } from './components/ui';
 import { generateDrivers, generateLoads } from './lib/generate';
@@ -40,6 +41,16 @@ export default function App() {
   const [active, setActive] = useState('lab');
   const { theme, toggle: toggleTheme } = useTheme();
 
+  /*
+   * The agent has two switches, not one. `agentArmed` is the microphone: once
+   * it is on, recognition runs for the whole session and the wake word can
+   * open the panel from anywhere. `agentOpen` is just whether the panel is on
+   * screen. Clicking the masthead key arms the mic *and* opens the panel;
+   * closing the panel leaves the mic armed, so "제로마일" still works.
+   */
+  const [agentArmed, setAgentArmed] = useState(false);
+  const [agentOpen, setAgentOpen] = useState(false);
+
   useEffect(() => {
     const observer = new IntersectionObserver(
       (entries) => {
@@ -66,7 +77,29 @@ export default function App() {
 
   return (
     <>
-      <Masthead active={active} theme={theme} onToggleTheme={toggleTheme} />
+      <Masthead
+        active={active}
+        theme={theme}
+        onToggleTheme={toggleTheme}
+        agentArmed={agentArmed}
+        agentOpen={agentOpen}
+        onToggleAgent={() => {
+          if (agentArmed && agentOpen) {
+            setAgentArmed(false);
+            setAgentOpen(false);
+            return;
+          }
+          setAgentArmed(true);
+          setAgentOpen(true);
+        }}
+      />
+
+      <Agent
+        armed={agentArmed}
+        open={agentOpen}
+        onOpen={() => setAgentOpen(true)}
+        onClose={() => setAgentOpen(false)}
+      />
 
       {/* ── 00 · Hero ─────────────────────────────────────────────────── */}
       <header className="zm-hero" id="top">
@@ -508,10 +541,16 @@ function Masthead({
   active,
   theme,
   onToggleTheme,
+  agentArmed,
+  agentOpen,
+  onToggleAgent,
 }: {
   active: string;
   theme: Theme;
   onToggleTheme: () => void;
+  agentArmed: boolean;
+  agentOpen: boolean;
+  onToggleAgent: () => void;
 }) {
   return (
     <nav className="zm-mast">
@@ -530,6 +569,7 @@ function Masthead({
         </div>
 
         <div className="zm-mast-actions">
+          <AgentLauncher armed={agentArmed} open={agentOpen} onToggle={onToggleAgent} />
           <button
             className="zm-swatch"
             type="button"

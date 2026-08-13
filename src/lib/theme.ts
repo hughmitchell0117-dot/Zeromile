@@ -19,6 +19,12 @@ if (typeof document !== 'undefined') {
 const listeners = new Set<(t: Theme) => void>();
 
 /** Theme lives on <html data-theme>, so CSS and MapLibre can both read it. */
+export function applyTheme(next: Theme) {
+  document.documentElement.dataset.theme = next;
+  localStorage.setItem(KEY, next);
+  listeners.forEach((fn) => fn(next));
+}
+
 export function useTheme() {
   const [theme, setTheme] = useState<Theme>(readTheme);
 
@@ -28,10 +34,7 @@ export function useTheme() {
   }, []);
 
   const toggle = useCallback(() => {
-    const next: Theme = readTheme() === 'dark' ? 'light' : 'dark';
-    document.documentElement.dataset.theme = next;
-    localStorage.setItem(KEY, next);
-    listeners.forEach((fn) => fn(next));
+    applyTheme(readTheme() === 'dark' ? 'light' : 'dark');
   }, []);
 
   return { theme, toggle };
