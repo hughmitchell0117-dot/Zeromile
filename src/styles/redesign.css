@@ -1238,10 +1238,18 @@ body {
  * band pays for it in blank card. The max-height keeps the cap for the busy
  * state, where the inner scroller takes over.
  */
+/*
+ * A percentage cap is no cap here: the rails are grid items in an auto row, so
+ * `max-height: 100%` resolves against a row whose height they are themselves
+ * setting, and the browser drops it as indefinite. Mid-run the telemetry's
+ * content ran to 856px and dragged the whole console to 1094 — taller than the
+ * window, which is most of what "crowded" was. An absolute ceiling hands the
+ * overflow to the inner scrollers, where it belongs.
+ */
 .ops-planner,
 .ops-telemetry {
   align-self: start;
-  max-height: calc(100% - 2 * var(--float, 12px));
+  max-height: min(72vh, 690px);
 }
 
 :root[data-theme='light'] .ops-kpis-empty {
@@ -1286,4 +1294,67 @@ body {
 .ops .run-cta {
   min-height: 52px;
   font-weight: 700;
+}
+
+/* ── Result-state density ────────────────────────────────────────────────
+ *
+ * Once a run lands, four surfaces arrive at once: the KPI band across the top,
+ * the comparison card over the map's shoulder, the proposals sheet along the
+ * bottom, and the telemetry rail. Nothing there is redundant, so this trims
+ * each one's footprint rather than removing any of it — the map keeps the
+ * middle, which is the only part that shows what the solver actually did.
+ * -------------------------------------------------------------------- */
+
+.ops {
+  /* The lead figure scales off this, so the band slims without cropping. */
+  --kpi-h: 112px;
+}
+
+.ops .kpi {
+  gap: 5px;
+  padding: 10px 13px;
+}
+
+/* Four supporting metrics over a 610px stage wrap to two rows; shaving the
+   track width lets them stay on one wherever the console is wide enough. */
+.ops .kpi-grid {
+  grid-template-columns: repeat(auto-fit, minmax(128px, 1fr));
+}
+
+.ops .kpi.lead {
+  padding: 12px 18px 13px;
+  /* Flat rule instead of the radial wash + fading gradient bar. */
+  background: none;
+}
+
+.ops .kpi.lead::after {
+  top: 12px;
+  bottom: 12px;
+  width: 3px;
+  border-radius: 0;
+  background: var(--yellow);
+}
+
+/* Proposals keep their scroll; they just stop claiming a third of the stage. */
+.ops .ops-routes {
+  min-height: 0;
+  max-height: min(30%, 268px);
+}
+
+.ops .ops-routes:has(.tour-detail) {
+  max-height: min(52%, 460px);
+}
+
+/* The comparison card sat 470px wide across the peninsula's upper half. */
+.ops .canvas-note {
+  width: min(310px, 46%);
+}
+
+/*
+ * The bar is written from rAF, so it already moves every frame; a short linear
+ * transition just absorbs frame-to-frame jitter. Linear, not eased — an eased
+ * progress bar reads as a progress bar lying about where it is.
+ */
+.ops .progress > span {
+  transition: width 0.2s linear;
 }

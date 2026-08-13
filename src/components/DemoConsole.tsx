@@ -81,22 +81,42 @@ const PRESETS = [
 export type DemoConfig = (typeof PRESETS)[number];
 
 /**
- * Solve pacing. The preset's budget says how much work the run is; the run
- * takes exactly as long as that work takes, and nothing on screen pretends
- * otherwise.
+ * Solve pacing. The preset's budget says how much work the run is; two knobs
+ * decide how that work is spread over wall clock.
  *
- * A fixed slab of iterations per frame was the wrong knob. The same 12,000
+ * A fixed slab of iterations per frame was the wrong ceiling. The same 12,000
  * moves are a 3ms frame on one board and a 40ms frame on another, so a heavy
  * scenario dropped frames while a light one wasted them, and the progress bar
- * advanced in lurches. Now each frame is handed as much work as this machine
- * measurably got through in `FRAME_COMPUTE_MS` — the run goes flat out at a
- * frame rate it can hold, and its duration is the honest cost of the search.
+ * advanced in lurches. So each frame's *ceiling* is as much work as this
+ * machine measurably got through in `FRAME_COMPUTE_MS`.
+ *
+ * Flat out, though, a modern laptop finishes 650k moves in under a second: the
+ * bar snapped to full before anyone could read a single stage label, and the
+ * one part of the product that is visibly *thinking* went by in a blink. So
+ * there is also a floor — the run is paced to `TARGET_SOLVE_MS`, handing out
+ * only the work the schedule has earned so far. Nothing on screen is faked by
+ * this: the moves counter, the elapsed clock, the temperature and the
+ * convergence chart all report the real search. It is the same computation,
+ * spread thin enough to watch. A machine too slow to hold the schedule simply
+ * takes longer, exactly as it did before.
  */
 const FRAME_COMPUTE_MS = 9;
 /** Opening guess at throughput, in iterations per millisecond. */
 const INITIAL_THROUGHPUT = 1_000;
 /** Never hand the annealer so little that the run dies of overhead. */
 const MIN_FRAME_ITERATIONS = 1_200;
+/** How long a solve should take when the machine is fast enough to choose. */
+const TARGET_SOLVE_MS = 5_400;
+
+/**
+ * Work released against elapsed time. Ease-out: the broad search that swings
+ * the numbers gets the early seconds, convergence gets the long tail — which
+ * is the half worth watching, and it keeps the bar moving to the very end
+ * instead of stalling at 97%.
+ */
+function solveCurve(t: number): number {
+  return 1 - Math.pow(1 - t, 2.2);
+}
 
 type Phase = 'idle' | 'running' | 'done';
 
@@ -499,19 +519,34 @@ export default function DemoConsole({
     const step = () => {
       const frameStart = performance.now();
 
-      // As much as this machine got through last frame, no more: the frame rate
-      // is the constraint, the duration is whatever it is.
-      const chunk = Math.max(
+      // Ceiling: as much as this machine got through last frame, no more. The
+      // frame rate is still the hard constraint on a slow board.
+      const ceiling = Math.max(
         MIN_FRAME_ITERATIONS,
         Math.round(throughput * FRAME_COMPUTE_MS),
       );
 
+      // Floor the run at TARGET_SOLVE_MS by handing out only the work this
+      // moment of the schedule has earned. `solveCurve` front-loads it, which
+      // is also how annealing behaves — the wide search that moves the numbers
+      // happens early, and convergence is the part worth watching slowly.
+      const elapsed = frameStart - startedAt;
+      const earned =
+        solveCurve(Math.min(1, elapsed / TARGET_SOLVE_MS)) * config.budget -
+        opt.iterations;
+      const chunk = Math.max(1, Math.min(ceiling, Math.round(earned)));
+
       opt.run(chunk);
 
       // Measured, not assumed. One EWMA so a single janky frame (a GC pause, a
-      // map tile decode) doesn't reset the pacing.
+      // map tile decode) doesn't reset the pacing. Only frames that actually
+      // hit the ceiling measure throughput — a paced frame finishes early by
+      // design, and reading that as "this machine got slower" would ratchet the
+      // ceiling down until a slow board could never catch up.
       const spent = performance.now() - frameStart;
-      if (spent > 0.4) throughput = throughput * 0.7 + (chunk / spent) * 0.3;
+      if (chunk >= ceiling && spent > 0.4) {
+        throughput = throughput * 0.7 + (chunk / spent) * 0.3;
+      }
 
       frame++;
       const frameStats = summarise(opt.tours, loads.length);
