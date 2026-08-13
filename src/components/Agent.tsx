@@ -13,6 +13,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AgentSession, agentConfigured, type ToolEvent } from '../lib/agent/gemini';
 import { GREETING } from '../lib/agent/prompt';
+import { elevenConfigured } from '../lib/agent/tts';
 import { speakable, useVoice } from '../lib/agent/voice';
 
 type Message = {
@@ -357,7 +358,9 @@ export default function Agent({
 
         <footer className="zm-agent-foot">
           <span>{supported ? 'ESC 닫기 · ⌘K 열기' : '이 브라우저는 음성 인식을 지원하지 않아요'}</span>
-          <span className="zm-agent-mark">GEMINI · 실시간 배차 연산</span>
+          <span className="zm-agent-mark">
+            GEMINI{elevenConfigured() ? ' · ELEVENLABS' : ''} · 실시간 배차 연산
+          </span>
         </footer>
       </div>
     </div>

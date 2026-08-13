@@ -2,12 +2,15 @@
  * Voice for the agent: a wake word, dictation, spoken replies, and a real
  * microphone level for the animation.
  *
- * This is the Web Speech API, which is a draft spec Chrome ships behind a
+ * Listening is the Web Speech API, which is a draft spec Chrome ships behind a
  * prefix — so everything here is feature-detected and the panel stays fully
  * usable by keyboard when it is missing. Two behaviours it forces on us:
  * recognition stops itself after a stretch of silence, so it is restarted on
- * `onend` for as long as the mic is armed; and it hears the page's own speech
- * synthesis, so results are dropped while the agent is talking.
+ * `onend` for as long as the mic is armed; and it hears whatever the page
+ * plays, so results are dropped while the agent is talking.
+ *
+ * Speaking is ElevenLabs (see `tts.ts`), falling back to the browser's own
+ * synthesiser whenever that cannot answer.
  *
  * The level meter is a separate getUserMedia capture feeding an AnalyserNode.
  * It is written into a ref rather than state on purpose — sixty renders a
@@ -15,6 +18,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { Speaker } from './tts';
 
 /** Said by itself or in front of a command: "제로마일, 지금 부산이에요". */
 const WAKE_WORDS = ['제로마일', '제로 마일', 'zeromile', 'zero mile', '지로마일'];
@@ -247,41 +251,59 @@ export function useVoice({
   }, [armed]);
 
   /* ── Speaking ──────────────────────────────────────────────────────── */
-  const speak = useCallback((text: string) => {
-    if (typeof speechSynthesis === 'undefined' || !text.trim()) return;
-    speechSynthesis.cancel();
+  const speakerRef = useRef<Speaker | null>(null);
+  if (!speakerRef.current) speakerRef.current = new Speaker();
 
-    const utterance = new SpeechSynthesisUtterance(text);
-    const korean = /[ㄱ-힝]/.test(text);
-    utterance.lang = korean ? 'ko-KR' : 'en-US';
-    utterance.rate = korean ? 1.05 : 1.0;
-    utterance.pitch = 1;
-
-    const voice = speechSynthesis
-      .getVoices()
-      .find((v) => v.lang.replace('_', '-').startsWith(utterance.lang.slice(0, 2)));
-    if (voice) utterance.voice = voice;
-
-    utterance.onstart = () => {
-      speakingRef.current = true;
-      setStatus('speaking');
-    };
-    const finish = () => {
-      speakingRef.current = false;
-      setStatus((s) => (s === 'speaking' ? 'idle' : s));
-    };
-    utterance.onend = finish;
-    utterance.onerror = finish;
-
-    speechSynthesis.speak(utterance);
+  const began = useCallback(() => {
+    speakingRef.current = true;
+    setStatus('speaking');
   }, []);
 
-  const stopSpeaking = useCallback(() => {
-    if (typeof speechSynthesis === 'undefined') return;
-    speechSynthesis.cancel();
+  const ended = useCallback(() => {
     speakingRef.current = false;
     setStatus((s) => (s === 'speaking' ? 'idle' : s));
   }, []);
+
+  /** The browser's own voice — only reached if ElevenLabs could not speak. */
+  const speakLocally = useCallback(
+    (text: string) => {
+      if (typeof speechSynthesis === 'undefined') return;
+      speechSynthesis.cancel();
+
+      const utterance = new SpeechSynthesisUtterance(text);
+      const korean = /[ㄱ-힣]/.test(text);
+      utterance.lang = korean ? 'ko-KR' : 'en-US';
+      utterance.rate = korean ? 1.05 : 1.0;
+
+      const voice = speechSynthesis
+        .getVoices()
+        .find((v) => v.lang.replace('_', '-').startsWith(utterance.lang.slice(0, 2)));
+      if (voice) utterance.voice = voice;
+
+      utterance.onstart = began;
+      utterance.onend = ended;
+      utterance.onerror = ended;
+      speechSynthesis.speak(utterance);
+    },
+    [began, ended],
+  );
+
+  const speak = useCallback(
+    (text: string) => {
+      if (!text.trim()) return;
+      if (typeof speechSynthesis !== 'undefined') speechSynthesis.cancel();
+      void speakerRef.current!.speak(text, { onStart: began, onEnd: ended }).then((spoke) => {
+        if (!spoke) speakLocally(text);
+      });
+    },
+    [began, ended, speakLocally],
+  );
+
+  const stopSpeaking = useCallback(() => {
+    speakerRef.current?.stop();
+    if (typeof speechSynthesis !== 'undefined') speechSynthesis.cancel();
+    ended();
+  }, [ended]);
 
   useEffect(() => stopSpeaking, [stopSpeaking]);
 
