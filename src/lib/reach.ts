@@ -57,8 +57,14 @@ export type Reach = {
   input: ReachInput;
   /** Corridors that fit, richest slack first. */
   inside: ReachEdge[];
-  /** Corridors that don't — drawn as the unlit remainder of the network. */
-  outside: { a: string; b: string }[];
+  /**
+   * Corridors that don't fit the day. They carry the same timing fields as
+   * `inside` so the map can flood them too — they are real road either way, and
+   * a fill that stops at the duty boundary leaves most of the expressway
+   * network undrawn. Cheapest first, so the front keeps moving outward past the
+   * boundary instead of jumping.
+   */
+  outside: ReachEdge[];
 };
 
 /**
@@ -87,7 +93,7 @@ export function computeReach(input: ReachInput): Reach {
   const home = primarySite(garage).id;
 
   const inside: ReachEdge[] = [];
-  const outside: { a: string; b: string }[] = [];
+  const outside: ReachEdge[] = [];
 
   for (let i = 0; i < SITES.length; i++) {
     for (let j = i + 1; j < SITES.length; j++) {
@@ -100,24 +106,26 @@ export function computeReach(input: ReachInput): Reach {
       const ba = legCost(from, b, a, home);
       const cost = Math.min(ab, ba);
 
-      if (budgetHours > 0 && cost <= budgetHours) {
-        const entry = ab <= ba ? a : b;
-        const exit = ab <= ba ? b : a;
-        inside.push({
-          a,
-          b,
-          cost,
-          slack: 1 - cost / budgetHours,
-          entry,
-          out: hrs(from, entry),
-          leg: hrs(entry, exit),
-        });
-      } else {
-        outside.push({ a, b });
-      }
+      const entry = ab <= ba ? a : b;
+      const exit = ab <= ba ? b : a;
+      const edge: ReachEdge = {
+        a,
+        b,
+        cost,
+        // Negative past the boundary: how far *beyond* the day this corridor
+        // sits, in the same units. The map grades brightness off it.
+        slack: budgetHours > 0 ? 1 - cost / budgetHours : -1,
+        entry,
+        out: hrs(from, entry),
+        leg: hrs(entry, exit),
+      };
+
+      if (budgetHours > 0 && cost <= budgetHours) inside.push(edge);
+      else outside.push(edge);
     }
   }
 
   inside.sort((x, y) => y.slack - x.slack);
+  outside.sort((x, y) => x.cost - y.cost);
   return { input, inside, outside };
 }

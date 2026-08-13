@@ -146,15 +146,33 @@ function buildFlows(tours: Tour[]): FeatureCollection {
 function buildReach(reach: Reach | null): FeatureCollection {
   if (!reach) return EMPTY_FC;
 
-  // Every corridor the truck can still run, oriented from the end it enters.
+  // Every corridor the truck can still run, oriented from the end it enters —
+  // and then every corridor it can't. Stopping at the duty boundary meant the
+  // fill only ever traced the roads inside one day's driving; the rest of the
+  // expressway network was never drawn at all, so the sweep read as a handful
+  // of trunk lines rather than as the country's road system.
   const runs: { line: [number, number][]; out: number; leg: number }[] = [];
   let span = 0;
-  for (const edge of reach.inside) {
-    const line = siteCorridor(edge.entry, edge.entry === edge.a ? edge.b : edge.a);
-    if (!line || line.length < 2) continue;
-    runs.push({ line, out: edge.out, leg: edge.leg });
-    span = Math.max(span, edge.out + edge.leg);
-  }
+  let spanBeyond = 0;
+
+  const collect = (edges: Reach['inside'], beyond: boolean) => {
+    for (const edge of edges) {
+      const line = siteCorridor(edge.entry, edge.entry === edge.a ? edge.b : edge.a);
+      if (!line || line.length < 2) continue;
+      runs.push({ line, out: edge.out, leg: edge.leg });
+      const reachAt = edge.out + edge.leg;
+      if (beyond) spanBeyond = Math.max(spanBeyond, reachAt);
+      else span = Math.max(span, reachAt);
+    }
+  };
+  collect(reach.inside, false);
+  collect(reach.outside, true);
+
+  // One axis over both halves. The beyond-the-day corridors are drawn on the
+  // same clock rather than on their own stretch of the sweep, because they turn
+  // out to add almost no geometry of their own: they run the same expressways,
+  // and a shared segment keeps the earliest arrival of any corridor using it.
+  span = Math.max(span, spanBeyond);
   if (span <= 0) return EMPTY_FC;
 
   const q = (v: number) => Math.round(v * GRID);
@@ -197,12 +215,31 @@ function buildReach(reach: Reach | null): FeatureCollection {
     }
   }
 
+  /*
+   * Stretch the used range back over the whole sweep.
+   *
+   * Arrival is bucketed against the *slowest corridor*, but a corridor's far
+   * end is always shared with something nearer, and dedupe keeps the earliest
+   * arrival — so the top third of the range comes out empty. Measured from
+   * Icheon on a 12-hour day: every one of 18,591 segments landed in bands 0-39
+   * of 64. The front then spent the last third of the sweep travelling across
+   * road that was already lit, which is exactly the stretch where the fill
+   * looked like it had run out of country.
+   *
+   * The remap is monotonic, so arrival order — the thing that carries the
+   * meaning — is untouched. It only stops the animation from budgeting time for
+   * bands that will never hold a road.
+   */
+  let top = 0;
+  for (const value of band.values()) if (value > top) top = value;
+  const stretch = top > 0 ? (BANDS - 1) / top : 1;
+
   const features: FeatureCollection['features'] = [];
   for (const [key, value] of band) {
     const [ax, ay, bx, by] = key.split(' ');
     features.push({
       type: 'Feature',
-      properties: { band: value },
+      properties: { band: Math.round(value * stretch) },
       geometry: {
         type: 'LineString',
         coordinates: [
@@ -406,12 +443,17 @@ type Flood = { front: number; gain: number };
 
 /**
  * The flood runs on its own clock, not the solver's. Annealing progress
- * arrives in uneven rAF-sized lurches and usually finishes in two or three
- * seconds — a front tied to it sprints, stutters, and gets cut off mid-sweep
- * when the solve lands. So `running` starts a fixed sweep of this length, and
- * the sweep is allowed to finish into the `done` phase.
+ * arrives in uneven rAF-sized lurches — a front tied to it sprints, stutters,
+ * and gets cut off mid-sweep when the solve lands. So `running` starts a fixed
+ * sweep of this length, and the sweep is allowed to finish into the `done`
+ * phase.
+ *
+ * Held just past the console's TARGET_SOLVE_MS (5.4s), so the fill runs the
+ * length of the optimisation and lands a beat after it rather than clearing off
+ * while the annealer is still working.
  */
-const FLOOD_S = 4.5;
+const FLOOD_S = 5.9;
+
 
 /**
  * The front is a ramp, not an edge.
@@ -519,11 +561,14 @@ function bandState(k: number, fill: number, crest: number, reach: number, w: num
   // These sit much higher than they used to. Every corridor is now drawn once
   // instead of an average of 21 times, so what used to arrive as stacked alpha
   // has to be asked for directly.
+  // The floors matter more than the peaks. At 0.2 alpha and 0.6px the far half
+  // of the network was technically drawn and effectively invisible — over paper
+  // especially — which is why a full-country sweep read as a few trunk lines.
   const lift = 1 + CREST_WIDTH * crest;
   return {
-    lit: Math.min(1, ((0.2 + slack * (0.9 - 0.2)) * fill + 0.3 * crest) * reach),
-    w5: (0.6 + slack * (2.1 - 0.6)) * w * lift,
-    w11: (1.4 + slack * (5.0 - 1.4)) * w * lift,
+    lit: Math.min(1, ((0.36 + slack * (0.92 - 0.36)) * fill + 0.28 * crest) * reach),
+    w5: (0.9 + slack * (2.2 - 0.9)) * w * lift,
+    w11: (2.0 + slack * (5.0 - 2.0)) * w * lift,
   };
 }
 
@@ -1327,8 +1372,25 @@ export default function KoreaMap({
     const map = mapRef.current;
     if (!map || !ready) return;
     const src = map.getSource('reach') as GeoJSONSource | undefined;
-    src?.setData(buildReach(reach) as never);
-  }, [ready, reach]);
+    const fc = buildReach(reach);
+    src?.setData(fc as never);
+    // Dev-only, same idea as `__zmMap`: the envelope is built once and then only
+    // animated, so when it looks wrong there is otherwise nothing to inspect.
+    if (import.meta.env.DEV && !ambient) {
+      const used = new Set<number>();
+      for (const f of fc.features) used.add((f.properties as { band: number }).band);
+      (window as unknown as { __zmReach?: unknown }).__zmReach = {
+        input: reach?.input ?? null,
+        inside: reach?.inside.length ?? 0,
+        outside: reach?.outside.length ?? 0,
+        segments: fc.features.length,
+        // How much of the sweep actually holds road. Anything well under BANDS
+        // means the front is spending time on empty range.
+        bandsUsed: used.size,
+        topBand: used.size ? Math.max(...used) : 0,
+      };
+    }
+  }, [ready, ambient, reach]);
 
   useEffect(() => {
     const map = mapRef.current;
