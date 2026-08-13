@@ -217,6 +217,40 @@ export const TOOL_DECLARATIONS: ToolDeclaration[] = [
 
 /* ── Implementations ─────────────────────────────────────────────────── */
 
+/**
+ * The live insert inside a section, not the section's heading. Landing on the
+ * heading is right for reading and wrong for a demo: the thing the agent just
+ * did is then still below the fold, and the recording shows a title card while
+ * the interesting part happens off screen.
+ */
+/**
+ * `nudge` is extra downward scroll past the top of the insert. The console is
+ * taller than most viewports, so pinning its top under the nav leaves the
+ * optimize row and the map hanging below the fold — which is the half worth
+ * filming. Scrolling a little further trades the console's header, which says
+ * nothing, for its controls, which are the demo. Tune these two numbers if the
+ * framing is off on the recording machine; nothing else depends on them.
+ */
+const SECTION_FOCUS: Record<string, { selector: string; nudge: number }> = {
+  lab: { selector: '.ops', nudge: 210 },
+  driver: { selector: '.phone', nudge: 40 },
+};
+
+function scrollToSection(section: HTMLElement, id: string) {
+  const focus = SECTION_FOCUS[id];
+  const target = focus ? section.querySelector<HTMLElement>(focus.selector) : null;
+  if (!focus || !target) {
+    section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    return;
+  }
+
+  // The masthead is sticky, so it eats the top of anything aligned to zero.
+  const mast = document.querySelector('.zm-mast')?.getBoundingClientRect().height ?? 64;
+  const top = window.scrollY + target.getBoundingClientRect().top - mast - 12 + focus.nudge;
+
+  window.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+}
+
 const round = (n: number, digits = 1) => {
   const f = 10 ** digits;
   return Math.round(n * f) / f;
@@ -242,7 +276,7 @@ export const TOOLS: Record<string, (args: Record<string, unknown>) => ToolResult
     const id = String(section);
     const el = document.getElementById(id);
     if (!el) return { error: `No section "${id}" on this page.` };
-    el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    scrollToSection(el, id);
     return { ok: true, section: id };
   },
 
