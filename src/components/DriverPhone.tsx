@@ -96,7 +96,7 @@ export default function DriverPhone({ tours }: { tours: Tour[] }) {
         </div>
       </div>
 
-      <div className="phone-scroll">
+      <div className="phone-scroll" tabIndex={0} aria-label="회차 상세 스크롤 영역">
         <div className="loop-card">
           <div
             className="row"
