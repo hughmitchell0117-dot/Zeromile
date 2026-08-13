@@ -30,9 +30,11 @@ import {
 } from '../lib/model';
 import { TourOptimizer, buildBaseline, showcaseTour, type RouteLock } from '../lib/solver';
 import { computeReach, dutyBudget } from '../lib/reach';
+import { useAgentConsole, type ConsoleSnapshot, type TourSnapshot } from '../lib/agent/bus';
 import {
   buildLoadingPlan,
   canCarryLoad,
+  compatibilityNote,
   isCompatibleSelection,
   loadTreatmentOptions,
   type CargoCondition,
@@ -792,6 +794,100 @@ export default function DemoConsole({
     setPendingOptimize(false);
     optimize();
   }, [pendingOptimize, phase, appliedRoute, routeDraft, optimize]);
+
+  /*
+   * The agent's window into this console. It reads the same state the UI
+   * renders and calls the same handlers the buttons call — so anything the
+   * agent does is a thing a person could have done by hand, and the screen
+   * updates for exactly the same reason.
+   */
+  useAgentConsole({
+    snapshot: (): ConsoleSnapshot => {
+      const myTour = displayedRoute ?? showcase ?? null;
+      return {
+        phase,
+        progress,
+        solveMs,
+        scenario: {
+          id: config.id,
+          label: config.label,
+          loads: config.loads,
+          drivers: config.drivers,
+          description: config.description,
+        },
+        scenarioOptions: PRESETS.map((preset) => ({
+          id: preset.id,
+          label: preset.label,
+          description: preset.description,
+        })),
+        trip: {
+          current: routeDraft.current,
+          currentLabel: routeDraft.current ? siteLabel(primarySite(routeDraft.current).id) : '',
+          returnDepot: routeDraft.returnDepot,
+          returnDepotLabel: routeDraft.returnDepot
+            ? siteLabel(primarySite(routeDraft.returnDepot).id)
+            : '',
+          ...routeDraft.constraints,
+        },
+        tripReady: hasRouteInput,
+        tripDirty: routeChanged,
+        eligibleLoads: appliedRoute && !routeChanged ? eligibleLoadCount : recommendedLoads.length,
+        candidateGoods: recommendedGoods,
+        compatibilityNote: compatibilityNote(
+          routeDraft.constraints.vehicleType,
+          routeDraft.constraints.cargoType,
+        ),
+        baseStats,
+        optStats: phase === 'done' ? stats : null,
+        myTour: myTour ? tourSnapshot(myTour) : null,
+        alternatives: alternatives
+          .filter((tour) => tour.driver.id !== myTour?.driver.id)
+          .slice(0, 4)
+          .map(tourSnapshot),
+        loadingPlan: loadingPlan.map((item) => ({
+          loadId: item.load.id,
+          ref: item.load.ref,
+          goods: item.load.goods,
+          tons: item.load.tons,
+          destination: item.destination,
+          loadOrder: item.loadOrder,
+          unloadOrder: item.unloadOrder,
+          zone: item.zone,
+          deckSide: item.deckSide,
+          orientation: item.orientation,
+          stacked: item.stacked,
+          treatment: item.selectedOption,
+          treatmentOptions: loadTreatmentOptions(item.load),
+          secureMinutes: item.secureMinutes,
+          reason: item.placementReason,
+          dimensions: item.dimensions,
+        })),
+        focusedLoadId: selectedMapLoadId,
+        totalLoadedTons: loadingPlan.reduce((sum, item) => sum + item.load.tons, 0),
+      };
+    },
+    setTrip: (patch) => {
+      if (patch.current !== undefined) updateLocation('current', patch.current);
+      if (patch.returnDepot !== undefined) updateLocation('returnDepot', patch.returnDepot);
+      // One field at a time, through the same setter the form uses, so the
+      // vehicle/cargo repair rules apply to the agent exactly as they do to a tap.
+      if (patch.startHour !== undefined) updateConstraint('startHour', patch.startHour);
+      if (patch.deadlineHour !== undefined) updateConstraint('deadlineHour', patch.deadlineHour);
+      if (patch.maxDriveHours !== undefined) updateConstraint('maxDriveHours', patch.maxDriveHours);
+      if (patch.truckTons !== undefined) updateConstraint('truckTons', patch.truckTons);
+      if (patch.vehicleType !== undefined) updateConstraint('vehicleType', patch.vehicleType);
+      if (patch.cargoType !== undefined) updateConstraint('cargoType', patch.cargoType);
+    },
+    run: runOptimization,
+    reset,
+    setScenario: (id) => {
+      const preset = PRESETS.find((option) => option.id === id);
+      if (preset) setPresetId(preset.id);
+    },
+    focusLoad: setSelectedMapLoadId,
+    setLoadTreatment: (loadId, treatment) =>
+      setLoadOptions((options) => ({ ...options, [loadId]: treatment })),
+  });
 
   const statusTone =
     phase === 'running' ? 'busy' : phase === 'done' ? 'ok' : appliedRoute && !routeChanged ? 'set' : '';
@@ -2109,6 +2205,42 @@ const CITY_KO: Record<string, string> = Object.fromEntries(
 /** City id → Korean name, used across the planner and route labels. */
 function ko(id: string): string {
   return SITE_BY_ID[id] ? siteLabel(id) : CITY_KO[id] ?? id;
+}
+
+/**
+ * A tour flattened into plain JSON for the agent. Docks become the names a
+ * driver would say, and nothing is recomputed — every figure is the solver's
+ * own, so the agent can only ever repeat what the map is already showing.
+ */
+function tourSnapshot(tour: Tour): TourSnapshot {
+  const totalKm = tour.loadedKm + tour.emptyKm;
+  return {
+    driverId: tour.driver.id,
+    driverName: tour.driver.name,
+    depot: ko(tour.driver.depot),
+    legs: tour.legs.map((leg, index) => ({
+      index: index + 1,
+      ref: leg.load.ref,
+      from: ko(leg.load.fromSite),
+      to: ko(leg.load.toSite),
+      fromBay: leg.load.fromBay,
+      toBay: leg.load.toBay,
+      km: leg.load.km,
+      hours: leg.load.hours,
+      tons: leg.load.tons,
+      goods: leg.load.goods,
+      revenueWon: leg.load.revenue,
+      deadheadKm: leg.deadheadKm,
+    })),
+    returnKm: tour.returnKm,
+    loadedKm: tour.loadedKm,
+    emptyKm: tour.emptyKm,
+    emptyRatio: totalKm > 0 ? tour.emptyKm / totalKm : 0,
+    hours: tour.hours,
+    revenueWon: tour.revenue,
+    costWon: tour.cost,
+    netWon: tour.net,
+  };
 }
 
 function tourRouteLabel(tour: Tour): string {

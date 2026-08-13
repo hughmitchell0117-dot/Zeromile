@@ -6,6 +6,7 @@ import DemoConsole, {
 } from './components/DemoConsole';
 import DriverPhone from './components/DriverPhone';
 import KoreaMap from './components/KoreaMap';
+import Agent, { AgentLauncher } from './components/Agent';
 import { useTheme, type Theme } from './lib/theme';
 import { Reveal } from './components/ui';
 import { generateDrivers, generateLoads } from './lib/generate';
@@ -40,6 +41,16 @@ export default function App() {
   const [active, setActive] = useState('lab');
   const { theme, toggle: toggleTheme } = useTheme();
 
+  /*
+   * The agent has two switches, not one. `agentArmed` is the microphone: once
+   * it is on, recognition runs for the whole session and the wake word can
+   * open the panel from anywhere. `agentOpen` is just whether the panel is on
+   * screen. Clicking the masthead key arms the mic *and* opens the panel;
+   * closing the panel leaves the mic armed, so "제로마일" still works.
+   */
+  const [agentArmed, setAgentArmed] = useState(false);
+  const [agentOpen, setAgentOpen] = useState(false);
+
   useEffect(() => {
     const observer = new IntersectionObserver(
       (entries) => {
@@ -66,7 +77,29 @@ export default function App() {
 
   return (
     <>
-      <Masthead active={active} theme={theme} onToggleTheme={toggleTheme} />
+      <Masthead
+        active={active}
+        theme={theme}
+        onToggleTheme={toggleTheme}
+        agentArmed={agentArmed}
+        agentOpen={agentOpen}
+        onToggleAgent={() => {
+          if (agentArmed && agentOpen) {
+            setAgentArmed(false);
+            setAgentOpen(false);
+            return;
+          }
+          setAgentArmed(true);
+          setAgentOpen(true);
+        }}
+      />
+
+      <Agent
+        armed={agentArmed}
+        open={agentOpen}
+        onOpen={() => setAgentOpen(true)}
+        onClose={() => setAgentOpen(false)}
+      />
 
       {/* ── 00 · Hero ─────────────────────────────────────────────────── */}
       <header className="zm-hero" id="top">
@@ -106,6 +139,10 @@ export default function App() {
                     작동 방식 →
                   </a>
                 </div>
+              </Reveal>
+
+              <Reveal delay={300} className="no-blur">
+                <DayContrast />
               </Reveal>
             </div>
 
@@ -508,10 +545,16 @@ function Masthead({
   active,
   theme,
   onToggleTheme,
+  agentArmed,
+  agentOpen,
+  onToggleAgent,
 }: {
   active: string;
   theme: Theme;
   onToggleTheme: () => void;
+  agentArmed: boolean;
+  agentOpen: boolean;
+  onToggleAgent: () => void;
 }) {
   return (
     <nav className="zm-mast">
@@ -530,6 +573,7 @@ function Masthead({
         </div>
 
         <div className="zm-mast-actions">
+          <AgentLauncher armed={agentArmed} open={agentOpen} onToggle={onToggleAgent} />
           <button
             className="zm-swatch"
             type="button"
@@ -544,6 +588,188 @@ function Masthead({
         </div>
       </div>
     </nav>
+  );
+}
+
+/* ── The day, drawn twice ─────────────────────────────────────────────────
+ *
+ * Two charts of the same thing: one driver's cumulative take-home across one
+ * working day, in thousands of won. Costs accrue continuously (fuel, tolls);
+ * money lands in a step at each delivery. That shape is the whole argument —
+ * single-load dispatch pays once and then bleeds for six hours on the empty
+ * run home, while a chained tour pays three times and ends at the depot.
+ *
+ * Figures are the same synthetic base day the hero strip quotes: ₩186k → ₩335k
+ * take-home, +80%. Hours are decimal (13.5 = 13:30).
+ * -------------------------------------------------------------------- */
+
+type DayPoint = [hour: number, cumulativeThousandWon: number];
+
+const DAY_SINGLE: DayPoint[] = [
+  [6, 0],
+  [8, -52],
+  [11, -108],
+  [13, 280],
+  [15, 238],
+  [17, 210],
+  [19, 186],
+];
+
+const DAY_CHAINED: DayPoint[] = [
+  [6, 0],
+  [8, -44],
+  [11, 214],
+  [12, 176],
+  [14, 302],
+  [16, 262],
+  [19, 335],
+];
+
+const DAY_X0 = 6;
+const DAY_X1 = 19;
+const DAY_LO = -150;
+const DAY_HI = 370;
+
+const PLOT_W = 268;
+const PLOT_H = 84;
+const PLOT_BOTTOM = 96;
+
+const px = (h: number) => 9 + ((h - DAY_X0) / (DAY_X1 - DAY_X0)) * PLOT_W;
+const py = (v: number) =>
+  PLOT_BOTTOM - ((v - DAY_LO) / (DAY_HI - DAY_LO)) * PLOT_H;
+
+/**
+ * Catmull-Rom through the samples, converted to cubic béziers. The day is a
+ * step function really, but a rounded line is the one that reads as a *curve
+ * of a life* rather than a spreadsheet plot. Tension stays low so the spikes
+ * don't overshoot into money that was never earned.
+ */
+function smooth(pts: DayPoint[]): string {
+  const p = pts.map(([h, v]) => [px(h), py(v)] as const);
+  let d = `M${p[0][0].toFixed(1)},${p[0][1].toFixed(1)}`;
+  for (let i = 0; i < p.length - 1; i++) {
+    const p0 = p[i - 1] ?? p[i];
+    const p1 = p[i];
+    const p2 = p[i + 1];
+    const p3 = p[i + 2] ?? p[i + 1];
+    const k = 0.16;
+    const c1x = p1[0] + (p2[0] - p0[0]) * k;
+    const c1y = p1[1] + (p2[1] - p0[1]) * k;
+    const c2x = p2[0] - (p3[0] - p1[0]) * k;
+    const c2y = p2[1] - (p3[1] - p1[1]) * k;
+    d += `C${c1x.toFixed(1)},${c1y.toFixed(1)} ${c2x.toFixed(1)},${c2y.toFixed(1)} ${p2[0].toFixed(1)},${p2[1].toFixed(1)}`;
+  }
+  return d;
+}
+
+/** The same curve, dropped to the floor and closed — the fill under the line. */
+const area = (pts: DayPoint[]) =>
+  `${smooth(pts)}L${px(pts[pts.length - 1][0]).toFixed(1)},${PLOT_BOTTOM + 8}L${px(pts[0][0]).toFixed(1)},${PLOT_BOTTOM + 8}Z`;
+
+function DayContrast() {
+  return (
+    <div className="zm-contrast">
+      <DayChart
+        id="single"
+        tag="오늘 · 단건"
+        bad
+        pts={DAY_SINGLE}
+        net="₩186,000"
+        foot="한 번 벌고, 여섯 시간 빈 차로 까먹습니다"
+      />
+      <DayChart
+        id="chained"
+        tag="ZeroMile · 연쇄"
+        pts={DAY_CHAINED}
+        ghost={DAY_SINGLE}
+        net="₩335,000"
+        foot="세 번 벌고, 차고지에서 끝납니다"
+      />
+    </div>
+  );
+}
+
+function DayChart({
+  id,
+  tag,
+  pts,
+  ghost,
+  net,
+  foot,
+  bad,
+}: {
+  id: string;
+  tag: string;
+  pts: DayPoint[];
+  ghost?: DayPoint[];
+  net: string;
+  foot: string;
+  bad?: boolean;
+}) {
+  const peak = Math.max(...pts.map(([, v]) => v));
+  const end = pts[pts.length - 1];
+  // The bleed: everything after the last delivery, hanging under the peak.
+  const bleed = pts.filter(([h]) => h >= pts.find(([, v]) => v === peak)![0]);
+  const bleedPath = `${smooth(bleed)}L${px(end[0]).toFixed(1)},${py(peak).toFixed(1)}Z`;
+
+  return (
+    <figure className={`zm-chart${bad ? ' bad' : ' good'}`}>
+      <figcaption>{tag}</figcaption>
+
+      <svg viewBox="0 0 286 112" role="img" aria-label={`${tag} — 하루 누적 실수령액 ${net}`}>
+        <defs>
+          <linearGradient id={`zm-g-${id}`} x1="0" y1="0" x2="0" y2="1">
+            <stop className="zm-g-top" offset="0%" />
+            <stop className="zm-g-bot" offset="100%" />
+          </linearGradient>
+          <clipPath id={`zm-c-${id}`}>
+            <rect x="0" y="0" width="286" height={PLOT_BOTTOM + 8} />
+          </clipPath>
+        </defs>
+
+        {/* zero rule — below it the driver is paying to work */}
+        <line className="zm-chart-zero" x1={9} y1={py(0)} x2={277} y2={py(0)} />
+
+        <g clipPath={`url(#zm-c-${id})`}>
+          <path className="zm-chart-area" d={area(pts)} fill={`url(#zm-g-${id})`} />
+        </g>
+
+        {bad && <path className="zm-chart-bleed" d={bleedPath} />}
+        {ghost && <path className="zm-chart-ghost" d={smooth(ghost)} />}
+
+        <path className="zm-chart-line" d={smooth(pts)} pathLength={1} />
+
+        {pts.map(([h, v], i) =>
+          i > 0 && v > pts[i - 1][1] + 120 ? (
+            <circle key={h} className="zm-chart-dot" cx={px(h)} cy={py(v)} r={2.6} />
+          ) : null,
+        )}
+
+        <circle className="zm-chart-end" cx={px(end[0])} cy={py(end[1])} r={3.4} />
+
+        {bad ? (
+          <text className="zm-chart-note" x={px(19)} y={py(peak) - 6}>
+            빈 차 350km · ₩0
+          </text>
+        ) : (
+          <text className="zm-chart-note good" x={px(19)} y={py(end[1]) - 8}>
+            +₩149,000
+          </text>
+        )}
+
+        <text className="zm-chart-ax" x={9} y={109}>
+          06:00
+        </text>
+        <text className="zm-chart-ax end" x={277} y={109}>
+          19:00
+        </text>
+      </svg>
+
+      <div className="zm-chart-net">
+        <b>{net}</b>
+        <span className="ko">{foot}</span>
+      </div>
+    </figure>
   );
 }
 
