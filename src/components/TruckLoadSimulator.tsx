@@ -12,8 +12,10 @@ import {
   buildLoadingPlan,
   compatibilityNote,
   isCompatibleSelection,
+  loadTreatmentOptions,
   type CargoCondition,
   type LoadingPlanItem,
+  type LoadTreatment,
   type VehicleType,
 } from '../lib/loading';
 import type { Tour } from '../lib/model';
@@ -98,10 +100,8 @@ export default function TruckLoadSimulator({
   cityName,
   loadOptions = {},
   focusLoadId = null,
-  simulationRunId = 0,
-  configuredCount = 0,
-  hasDraftChanges = false,
-  onRunSimulation,
+  onFocusLoad,
+  onSelectLoadOption,
   viewportGrip,
 }: {
   vehicleType: VehicleType;
@@ -112,10 +112,8 @@ export default function TruckLoadSimulator({
   cityName: (id: string) => string;
   loadOptions?: Record<number, string>;
   focusLoadId?: number | null;
-  simulationRunId?: number;
-  configuredCount?: number;
-  hasDraftChanges?: boolean;
-  onRunSimulation?: () => void;
+  onFocusLoad?: (loadId: number) => void;
+  onSelectLoadOption?: (loadId: number, option: LoadTreatment) => void;
   /** Drag handle for the 3D view's height, owned by the console's layout state. */
   viewportGrip?: ReactNode;
 }) {
@@ -147,10 +145,6 @@ export default function TruckLoadSimulator({
     () => (tour ? buildLoadingPlan(tour, cityName, loadOptions) : []),
     [tour, cityName, loadOptions],
   );
-  const addedPlan = useMemo(
-    () => plan.filter((item) => Object.prototype.hasOwnProperty.call(loadOptions, item.load.id)),
-    [plan, loadOptions],
-  );
   const tourKey = plan.map((item) => item.load.id).join('-');
   const maxTimeline = plan.length * 2;
   const vehicle = VEHICLES[vehicleType];
@@ -172,7 +166,7 @@ export default function TruckLoadSimulator({
       vehicleType,
       cargoCondition,
       truckTons,
-      plan: addedPlan,
+      plan,
       slotCount: plan.length,
       timeline,
       focusLoadId,
@@ -193,30 +187,22 @@ export default function TruckLoadSimulator({
   }, [vehicleType, cargoCondition, truckTons]);
 
   useEffect(() => {
-    setTimeline(0);
+    setTimeline(phase === 'done' ? plan.length : 0);
     setPlaying(false);
-  }, [tourKey, plan.length]);
-
-  useEffect(() => {
-    if (simulationRunId === 0 || plan.length === 0) return;
-    setTimeline(plan.length);
-    setPlaying(false);
-  }, [simulationRunId, plan.length]);
+  }, [tourKey, plan.length, phase]);
 
   // Selecting a load on the map pushes the camera in on that pallet.
   useEffect(() => {
     if (focusLoadId === null || plan.length === 0) return;
     const item = plan.find((candidate) => candidate.load.id === focusLoadId);
     if (!item) return;
-    if (simulationRunId > 0) {
-      setPlaying(false);
-      setTimeline(item.loadOrder);
-    }
+    setPlaying(false);
+    setTimeline(plan.length);
     const box = cargoBox(item, plan.length, dims);
     goalRef.current.target = { x: box.center.x, y: box.center.y + 0.1, z: box.center.z };
     goalRef.current.zoom = clamp(2.3, ZOOM_MIN, ZOOM_MAX);
     setZoomPct(230);
-  }, [focusLoadId, plan, simulationRunId, dims]);
+  }, [focusLoadId, plan, dims]);
 
   useEffect(() => {
     if (!playing || maxTimeline === 0) return;
@@ -400,16 +386,12 @@ export default function TruckLoadSimulator({
     }
   };
 
-  const hasRun = simulationRunId > 0;
-  const timelineStatus = describeTimeline(
-    plan,
-    timeline,
-    phase,
-    hasRun,
-    hasDraftChanges,
-    configuredCount,
-  );
+  const hasRun = phase === 'done' && plan.length > 0;
+  const timelineStatus = describeTimeline(plan, timeline, phase, hasRun);
   const invalidCombination = !isCompatibleSelection(vehicleType, cargoCondition);
+  const selectedItem =
+    plan.find((item) => item.load.id === focusLoadId) ??
+    [...plan].sort((a, b) => a.unloadOrder - b.unloadOrder)[0];
 
   return (
     <section className="truck-lab" aria-label="3D 적재 시뮬레이터">
@@ -494,21 +476,20 @@ export default function TruckLoadSimulator({
       </div>
 
       {plan.length > 0 && (
-        <div className={`truck-sim-gate${hasDraftChanges ? ' dirty' : ''}`}>
+        <div className="truck-sim-gate">
           <div>
-            <b>{hasRun ? '현재 추가된 상자' : '최적화 결과 확인 완료'}</b>
-            <span>
-              {configuredCount > 0
-                ? `상세 옵션 ${configuredCount}/${plan.length}건 설정`
-                : '지도 화물 레이블에서 옵션을 선택하세요'}
-            </span>
+            <b>최적화 화물 {plan.length}건 · 상자 {plan.length}개 자동 등록</b>
+            <span>각 상자에 권장 적재 방식이 적용됐습니다.</span>
           </div>
           <button
             type="button"
-            onClick={onRunSimulation}
-            disabled={!onRunSimulation || configuredCount === 0}
+            onClick={() => {
+              setTimeline(0);
+              setPlaying(true);
+            }}
+            disabled={!hasRun}
           >
-            {hasRun ? '선택 옵션 상자 반영' : '상자 추가'}
+            상하차 순서 재생
           </button>
         </div>
       )}
@@ -518,15 +499,14 @@ export default function TruckLoadSimulator({
           {[...plan]
             .sort((a, b) => a.loadOrder - b.loadOrder)
             .map((item) => {
-              const added = Object.prototype.hasOwnProperty.call(loadOptions, item.load.id);
               return (
-              <li key={item.load.id}>
+              <li key={item.load.id} className={selectedItem?.load.id === item.load.id ? 'selected' : ''}>
                 <button
                   type="button"
-                  disabled={!added}
                   onClick={() => {
                     setPlaying(false);
-                    setTimeline(item.loadOrder);
+                    setTimeline(plan.length);
+                    onFocusLoad?.(item.load.id);
                     const box = cargoBox(item, plan.length, dims);
                     goalRef.current.target = {
                       x: box.center.x,
@@ -545,7 +525,7 @@ export default function TruckLoadSimulator({
                     <b>{item.load.goods}</b>
                     <small>
                       {PROFILE_LABEL[item.profile]} · {item.load.tons}t · {item.dimensions.lengthM.toFixed(2)}×{item.dimensions.widthM.toFixed(2)}×{item.dimensions.heightM.toFixed(2)}m · {item.destination} 하역
-                      {added ? ` · ${item.selectedOption}` : ' · 옵션 선택 후 상자 추가'}
+                      {` · ${item.selectedOption}`}
                     </small>
                   </span>
                   <span className="unload-order">
@@ -563,9 +543,37 @@ export default function TruckLoadSimulator({
         </p>
       )}
 
+      {selectedItem && (
+        <div className="truck-load-method">
+          <div className="truck-load-method-head">
+            <span>SELECTED CARGO · 하역 {selectedItem.unloadOrder}</span>
+            <b>{selectedItem.load.goods} · {selectedItem.destination}</b>
+            <small>{selectedItem.placementReason}</small>
+          </div>
+          <div className="truck-load-method-options" role="group" aria-label={`${selectedItem.load.goods} 적재 방식`}>
+            {loadTreatmentOptions(selectedItem.load).map((option) => (
+              <button
+                type="button"
+                key={option}
+                className={selectedItem.selectedOption === option ? 'selected' : ''}
+                aria-pressed={selectedItem.selectedOption === option}
+                onClick={() => onSelectLoadOption?.(selectedItem.load.id, option)}
+                disabled={!onSelectLoadOption}
+              >
+                <i />
+                <span>{option}</span>
+              </button>
+            ))}
+          </div>
+          <small className="truck-load-method-note">
+            선택한 방식에 따라 상자 방향·높이·고정구·주변 간격이 즉시 재계산됩니다.
+          </small>
+        </div>
+      )}
+
       <p className="truck-rule">
         <b>적재 원칙</b>
-        상자 {addedPlan.length}/{plan.length}개 · 적재 {addedPlan.reduce((sum, item) => sum + item.load.tons, 0)}t · 선택 옵션과 실제 경유 순서를 반영합니다.
+        상자 {plan.length}/{plan.length}개 · 적재 {plan.reduce((sum, item) => sum + item.load.tons, 0)}t · 첫 하역지를 후문에, 뒤 하역지를 안쪽에 배치합니다.
       </p>
     </section>
   );
@@ -576,8 +584,6 @@ function describeTimeline(
   timeline: number,
   phase: Phase,
   hasRun: boolean,
-  hasDraftChanges: boolean,
-  configuredCount: number,
 ) {
   if (phase === 'running') {
     return { title: '경로와 적재 제약 동시 계산', detail: '도착 순서가 바뀔 때마다 적재안도 재배열됩니다.' };
@@ -588,13 +594,7 @@ function describeTimeline(
   if (!hasRun) {
     return {
       title: '최적화 결과 1차 확정',
-      detail: `경유지 ${plan.length}곳 · 옵션 선택 후 '상자 추가'를 누르세요. 현재 ${configuredCount}건 선택됨.`,
-    };
-  }
-  if (hasDraftChanges) {
-    return {
-      title: '상세 설정 변경 감지',
-      detail: '현재 재생안은 유지됩니다. 다시 실행하면 변경된 옵션으로 배치를 재계산합니다.',
+      detail: `경유지 ${plan.length}곳 · 결과 화물 수만큼 상자를 등록하는 중입니다.`,
     };
   }
   if (timeline === 0) {
@@ -658,17 +658,25 @@ function cargoBox(item: LoadingPlanItem, count: number, dims: Dims) {
   const slot = Math.min(1.55, usable / Math.max(1, count));
   const x = dims.deckRear - 0.2 - slot * (item.unloadOrder - 0.5);
   const centered = item.deckSide === 'center';
-  const lengthFactor = clamp(item.dimensions.lengthM / 2.4, 0.58, 0.98);
+  const footprintLength =
+    item.orientation === 'transverse' ? item.dimensions.widthM : item.dimensions.lengthM;
+  const footprintWidth =
+    item.orientation === 'transverse' ? item.dimensions.lengthM : item.dimensions.widthM;
+  const lengthFactor = clamp(footprintLength / 2.4, 0.5, 0.98);
   const sizeZ = clamp(
-    item.dimensions.widthM * (centered ? 1.15 : 0.9),
+    footprintWidth * (centered ? 1.08 : 0.82),
     dims.halfWidth * 0.68,
     centered ? dims.halfWidth * 1.78 : dims.halfWidth * 0.96,
   );
   const z = centered ? 0 : (item.deckSide === 'left' ? -1 : 1) * dims.halfWidth * 0.5;
-  const height = clamp(item.dimensions.heightM * 0.82, 0.5, 1.55);
+  const height = clamp(item.dimensions.heightM * (item.stacked ? 1.25 : 0.82), 0.5, 1.82);
   return {
     center: { x, y: dims.deckTop + height / 2, z },
-    size: { x: slot * 0.88 * lengthFactor, y: height, z: sizeZ },
+    size: {
+      x: slot * (item.stacked ? 0.68 : 0.88) * lengthFactor,
+      y: height,
+      z: sizeZ * (item.stacked ? 0.86 : 1),
+    },
   };
 }
 
@@ -715,7 +723,25 @@ function buildCargoTreatment(
         '#48d9c9',
       );
     }
-  } else if (item.selectedOption === '2중 래칫 결박') {
+  } else if (item.selectedOption === '가로 팔레트 고정') {
+    push(
+      { x: box.center.x, y: bottom - 0.07, z: box.center.z },
+      { x: box.size.x * 1.08, y: 0.12, z: box.size.z * 1.1 },
+      '#b48452',
+    );
+    for (const x of [-0.28, 0.28]) {
+      push(
+        { x: box.center.x + x * box.size.x, y: bottom - 0.145, z: box.center.z },
+        { x: 0.08, y: 0.07, z: box.size.z * 0.94 },
+        '#6f4729',
+      );
+    }
+  } else if (item.selectedOption === '2단 적층 · 래칫 결박') {
+    push(
+      { x: box.center.x, y: box.center.y, z: box.center.z },
+      { x: box.size.x * 1.03, y: 0.055, z: box.size.z * 1.04 },
+      '#704a2d',
+    );
     for (const x of [-0.24, 0.24]) {
       const strapX = box.center.x + box.size.x * x;
       push({ x: strapX, y: top + 0.025, z: box.center.z }, { x: 0.07, y: 0.05, z: box.size.z * 1.12 }, '#fee500');
@@ -954,7 +980,17 @@ function drawScene(
   const centerX = width * 0.5;
   const centerY = height * 0.58;
   const focal = (CAMERA * width * view.zoom) / BASE_SPAN;
-  context.clearRect(0, 0, width, height);
+
+  // Clear in backing-store coordinates. Clearing through the DPR transform can
+  // leave a fringe of old pixels after a fractional resize, which looks like a
+  // second truck while the camera is moving.
+  context.save();
+  context.setTransform(1, 0, 0, 1, 0, 0);
+  context.clearRect(0, 0, context.canvas.width, context.canvas.height);
+  context.restore();
+  context.save();
+  context.globalCompositeOperation = 'source-over';
+  context.filter = 'none';
 
   const toCamera = (point: Point3) =>
     rotate(
@@ -973,7 +1009,7 @@ function drawScene(
     };
   };
 
-  drawGrid(context, project, morph, dims);
+  drawGrid(context, project, morph, dims, view.zoom);
   drawGroundShadow(context, project, morph, dims);
 
   const prims = buildTruck(vehicleType, dims, morph);
@@ -1001,16 +1037,16 @@ function drawScene(
           .map((poly) => {
             const camPts = poly.pts.map(toCamera);
             const centroid = average(camPts);
-            if (!prim.translucent) {
-              // Backface cull against the eye so boxes never show inside-out.
-              const normalCam = rotate(poly.normal, view.yaw, view.pitch);
-              const toEye = {
-                x: -centroid.x,
-                y: -centroid.y,
-                z: CAMERA - centroid.z,
-              };
-              if (dot(normalCam, toEye) <= 0) return null;
-            }
+            // Cull the far face for both solid and translucent boxes. Drawing
+            // every wall of the x-ray body on top of itself reads as cloned
+            // trucks rather than one transparent enclosure.
+            const normalCam = rotate(poly.normal, view.yaw, view.pitch);
+            const toEye = {
+              x: -centroid.x,
+              y: -centroid.y,
+              z: CAMERA - centroid.z,
+            };
+            if (dot(normalCam, toEye) <= 0) return null;
             return { poly, depth: centroid.z };
           })
           .filter((face): face is { poly: Poly; depth: number } => face !== null)
@@ -1054,7 +1090,7 @@ function drawScene(
   drawPass(prims.filter((prim) => !prim.translucent));
   drawPass(prims.filter((prim) => prim.translucent));
   drawCargoLabels(context, visibleCargo, slotCount, dims, project, morph, focusLoadId);
-
+  context.restore();
 }
 
 function cargoVisible(item: LoadingPlanItem, timeline: number, count: number) {
@@ -1069,30 +1105,51 @@ function drawGrid(
   project: Projector,
   morph: number,
   dims: Dims,
+  zoom: number,
 ) {
-  const span = 9;
-  const depth = 6;
+  const xMin = dims.cabFront - 1.1;
+  const xMax = dims.deckRear + 1.1;
+  const zMin = -3.15;
+  const zMax = 3.15;
+  const step = 0.7;
+  const zoomFade = clamp(1 / Math.sqrt(zoom), 0.42, 1);
+  const alpha = (0.48 + (1 - morph) * 0.45) * zoomFade;
   context.save();
   context.lineWidth = 1;
-  for (let x = -span; x <= span; x += 0.75) {
-    const near = Math.abs(x - dims.deckFront) < span * 0.55 ? 0.16 : 0.07;
-    context.strokeStyle = rgba('#51e9ff', near * (0.55 + (1 - morph) * 0.85));
-    const a = project({ x, y: 0, z: -depth });
-    const b = project({ x, y: 0, z: depth });
+  for (let x = xMin; x <= xMax + 0.001; x += step) {
+    context.strokeStyle = rgba('#51e9ff', 0.09 * alpha);
+    const a = project({ x, y: 0, z: zMin });
+    const b = project({ x, y: 0, z: zMax });
     context.beginPath();
     context.moveTo(a.x, a.y);
     context.lineTo(b.x, b.y);
     context.stroke();
   }
-  for (let z = -depth; z <= depth; z += 0.75) {
-    context.strokeStyle = rgba('#51e9ff', (Math.abs(z) < 2 ? 0.16 : 0.07) * (0.55 + (1 - morph) * 0.85));
-    const a = project({ x: -span, y: 0, z });
-    const b = project({ x: span, y: 0, z });
+  for (let z = zMin; z <= zMax + 0.001; z += step) {
+    context.strokeStyle = rgba('#51e9ff', (Math.abs(z) < 0.36 ? 0.16 : 0.09) * alpha);
+    const a = project({ x: xMin, y: 0, z });
+    const b = project({ x: xMax, y: 0, z });
     context.beginPath();
     context.moveTo(a.x, a.y);
     context.lineTo(b.x, b.y);
     context.stroke();
   }
+
+  const boundary = [
+    { x: xMin, y: 0, z: zMin },
+    { x: xMax, y: 0, z: zMin },
+    { x: xMax, y: 0, z: zMax },
+    { x: xMin, y: 0, z: zMax },
+  ].map(project);
+  context.beginPath();
+  boundary.forEach((point, index) => {
+    if (index === 0) context.moveTo(point.x, point.y);
+    else context.lineTo(point.x, point.y);
+  });
+  context.closePath();
+  context.strokeStyle = rgba('#51e9ff', 0.2 * alpha);
+  context.lineWidth = 1.2;
+  context.stroke();
   context.restore();
 }
 
