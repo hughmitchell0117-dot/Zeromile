@@ -93,6 +93,8 @@ export default function Agent({
   const [messages, setMessages] = useState<Message[]>([]);
   const [draft, setDraft] = useState('');
   const [busy, setBusy] = useState(false);
+  /** Seconds left on the API's rate limit, when we are stalled on it. */
+  const [waiting, setWaiting] = useState(0);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
 
   const sessionRef = useRef<AgentSession | null>(null);
@@ -148,6 +150,7 @@ export default function Agent({
             if (last && last.name === event.name) last.result = event.result;
             patch(replyId, { tools: [...tools] });
           },
+          onWait: (seconds) => setWaiting(seconds),
         });
         const final = answer || streamed;
         patch(replyId, { text: final, pending: false, tools: [...tools] });
@@ -161,6 +164,7 @@ export default function Agent({
       } finally {
         busyRef.current = false;
         setBusy(false);
+        setWaiting(0);
       }
     },
     [patch, push],
@@ -200,6 +204,14 @@ export default function Agent({
     const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [messages, interim]);
+
+  // Count the rate-limit wait down rather than showing a frozen number — a
+  // stalled demo needs to look like it is going somewhere.
+  useEffect(() => {
+    if (waiting <= 0) return;
+    const timer = setInterval(() => setWaiting((s) => Math.max(0, s - 1)), 1000);
+    return () => clearInterval(timer);
+  }, [waiting]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -265,7 +277,9 @@ export default function Agent({
           <div className="zm-agent-id">
             <b>ZeroMile 배차 도우미</b>
             <span>
-              {status === 'speaking'
+              {waiting > 0
+                ? `무료 한도 대기 ${waiting}초`
+                : status === 'speaking'
                 ? '말하는 중'
                 : status === 'hearing'
                   ? '듣는 중'

@@ -3,6 +3,8 @@
 interface ImportMetaEnv {
   readonly VITE_GEMINI_API_KEY?: string;
   readonly VITE_GEMINI_PROXY_URL?: string;
+  readonly VITE_GEMINI_MODEL?: string;
+  readonly VITE_GEMINI_RPM?: string;
   readonly VITE_ELEVENLABS_API_KEY?: string;
   readonly VITE_ELEVENLABS_VOICE_ID?: string;
 }

@@ -16,6 +16,7 @@
  */
 
 import { SYSTEM_PROMPT } from './prompt';
+import { liveContext } from './context';
 import { TOOL_DECLARATIONS, runTool } from './tools';
 
 const PROXY = import.meta.env.VITE_GEMINI_PROXY_URL?.trim();
@@ -23,20 +24,62 @@ const API_KEY = import.meta.env.VITE_GEMINI_API_KEY?.trim();
 
 /**
  * Tried in order on the first call; whichever answers is kept for the session.
- * The alias tracks Google's current Flash, the pins are there so a retired
- * alias doesn't take the demo down.
+ * Flash-Lite is the choice on a free key: the free tier's ceiling is requests
+ * per minute, not intelligence, and Lite is both quicker to first token and
+ * more generously rated. The pins behind it are there so a retired alias
+ * doesn't take the demo down mid-pitch.
  */
-const MODELS = ['gemini-flash-latest', 'gemini-2.5-flash', 'gemini-2.0-flash'];
+const MODELS = [
+  import.meta.env.VITE_GEMINI_MODEL?.trim(),
+  'gemini-3.1-flash-lite',
+  'gemini-flash-lite-latest',
+  'gemini-2.5-flash-lite',
+  'gemini-2.5-flash',
+].filter(Boolean) as string[];
 
-/** A model that keeps calling tools without ever answering is a bug, not a plan. */
-const MAX_TOOL_ROUNDS = 8;
+/**
+ * The whole rate budget, in one place.
+ *
+ * A free Gemini key allows a fixed number of requests per rolling minute, and
+ * *every* tool round is its own request. A one-minute demo therefore has a
+ * budget of roughly one bucket, total — so the throttle below is not a safety
+ * net, it is the thing that decides whether the demo survives. Raise this the
+ * moment the key is on a paid tier.
+ */
+const RPM = Number(import.meta.env.VITE_GEMINI_RPM ?? 15);
+/** Leave one in hand: a 429 costs more than a short wait. */
+const RESERVE = 1;
+
+/**
+ * A model that keeps calling tools without ever answering is a bug, not a
+ * plan — and at four rounds a single question could eat a third of the minute.
+ */
+const MAX_TOOL_ROUNDS = 4;
 /** Turns of history kept. Long enough to hold a conversation, short enough to stay cheap. */
-const MAX_HISTORY = 24;
+const MAX_HISTORY = 16;
+/** Old tool results are re-sent on every request; past this many they are dropped. */
+const KEEP_FULL_RESULTS = 6;
+
+/**
+ * `thoughtSignature` is Gemini 3's opaque reasoning token, and it is not
+ * optional: a function call has to go back into the history carrying the exact
+ * signature it arrived with, or the next turn is rejected. That is why model
+ * turns are stored as the raw parts off the wire rather than rebuilt from the
+ * name and args — reconstructing them silently drops the signature and the
+ * call id that pairs a parallel call with its response.
+ */
+type FunctionCall = {
+  name: string;
+  args: Record<string, unknown>;
+  id?: string;
+};
 
 type Part =
-  | { text: string }
-  | { functionCall: { name: string; args: Record<string, unknown> } }
-  | { functionResponse: { name: string; response: Record<string, unknown> } };
+  | { text: string; thoughtSignature?: string }
+  | { functionCall: FunctionCall; thoughtSignature?: string }
+  | {
+      functionResponse: { name: string; response: Record<string, unknown>; id?: string };
+    };
 
 type Content = { role: 'user' | 'model'; parts: Part[] };
 
@@ -53,7 +96,57 @@ export type SendCallbacks = {
   onTool?: (event: ToolEvent) => void;
   /** Fired after that tool returns. */
   onToolResult?: (event: ToolEvent) => void;
+  /** Fired when the turn is stalled on the rate limit, so the UI can say so. */
+  onWait?: (seconds: number) => void;
 };
+
+/**
+ * A rolling-window request budget shared by every call in the tab.
+ *
+ * Not a fixed delay between requests — the limit is N per minute, so a burst
+ * of four is fine and only the fifth-past-N has to wait. That matters here:
+ * the expensive moment is the opening exchange, where three or four requests
+ * land back to back, and spacing them evenly would make the agent feel slow
+ * for no gain.
+ */
+const requestLog: number[] = [];
+
+function budgetWaitMs(): number {
+  const now = Date.now();
+  while (requestLog.length && now - requestLog[0] >= 60_000) requestLog.shift();
+  if (requestLog.length < Math.max(1, RPM - RESERVE)) return 0;
+  return 60_000 - (now - requestLog[0]) + 50;
+}
+
+async function claimSlot(onWait?: (seconds: number) => void, signal?: AbortSignal) {
+  for (;;) {
+    const wait = budgetWaitMs();
+    if (wait <= 0) break;
+    onWait?.(Math.ceil(wait / 1000));
+    await sleep(wait, signal);
+  }
+  requestLog.push(Date.now());
+}
+
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(resolve, ms);
+    signal?.addEventListener(
+      'abort',
+      () => {
+        clearTimeout(timer);
+        reject(new Error('aborted'));
+      },
+      { once: true },
+    );
+  });
+}
+
+/** Google puts the retry delay in the error body; honour it over guessing. */
+function retryDelayMs(detail: string): number | null {
+  const match = /"retryDelay"\s*:\s*"(\d+(?:\.\d+)?)s"/.exec(detail);
+  return match ? Math.ceil(Number(match[1]) * 1000) : null;
+}
 
 export function agentConfigured(): boolean {
   return Boolean(PROXY || API_KEY);
@@ -87,11 +180,9 @@ export class AgentSession {
 
     let answer = '';
     for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
-      const { text, calls } = await this.stream(callbacks.onText, signal);
+      const { text, calls, parts } = await this.stream(callbacks, signal);
 
-      const parts: Part[] = [];
-      if (text) parts.push({ text });
-      for (const call of calls) parts.push({ functionCall: call });
+      // Verbatim — signatures and call ids included.
       if (parts.length) this.history.push({ role: 'model', parts });
 
       answer = text || answer;
@@ -103,7 +194,14 @@ export class AgentSession {
         callbacks.onTool?.(event);
         const result = runTool(call.name, call.args);
         callbacks.onToolResult?.({ ...event, result });
-        responses.push({ functionResponse: { name: call.name, response: result } });
+        responses.push({
+          functionResponse: {
+            name: call.name,
+            response: result,
+            // Pairs this result with its call when several ran in one turn.
+            ...(call.id ? { id: call.id } : {}),
+          },
+        });
       }
       // Function results go back as a user-role turn — that is the shape the
       // v1beta REST endpoint expects, the same one the official SDKs build.
@@ -118,34 +216,57 @@ export class AgentSession {
     return answer;
   }
 
-  /** One request/response against the API, with the model fallback on 404. */
+  /**
+   * One request/response against the API: budget first, then the model
+   * fallback on 404, then a bounded retry if the limit is hit anyway.
+   */
   private async stream(
-    onText: ((delta: string) => void) | undefined,
+    callbacks: SendCallbacks,
     signal?: AbortSignal,
-  ): Promise<{ text: string; calls: { name: string; args: Record<string, unknown> }[] }> {
-    const attempts = this.modelResolved ? [this.model] : MODELS;
-    let lastError: Error | null = null;
+  ): Promise<StreamOutcome> {
+    for (let attempt = 0; ; attempt++) {
+      await claimSlot(callbacks.onWait, signal);
 
-    for (const model of attempts) {
-      const response = await this.post(model, signal);
-      if (response.status === 404 && !this.modelResolved) {
-        lastError = new Error(`Model ${model} is unavailable for this key.`);
+      const models = this.modelResolved ? [this.model] : MODELS;
+      let response: Response | null = null;
+      let lastError: Error | null = null;
+
+      for (const model of models) {
+        const candidate = await this.post(model, signal);
+        if (candidate.status === 404 && !this.modelResolved) {
+          lastError = new Error(`Model ${model} is unavailable for this key.`);
+          continue;
+        }
+        this.model = model;
+        this.modelResolved = true;
+        response = candidate;
+        break;
+      }
+      if (!response) throw lastError ?? new Error('No Gemini model available for this key.');
+
+      if (response.ok) return await consume(response, callbacks.onText);
+
+      // 429 is survivable twice; past that the minute is genuinely spent and
+      // saying so is better than stalling behind a spinner.
+      if (response.status === 429 && attempt < 2) {
+        const detail = await response.text();
+        const wait = retryDelayMs(detail) ?? (attempt + 1) * 8_000;
+        callbacks.onWait?.(Math.ceil(wait / 1000));
+        // Treat the window as spent so the next claim waits rather than racing.
+        requestLog.push(Date.now());
+        await sleep(wait, signal);
         continue;
       }
-      if (!response.ok) {
-        throw new Error(await describeFailure(response));
-      }
-      this.model = model;
-      this.modelResolved = true;
-      return await consume(response, onText);
+      throw new Error(await describeFailure(response));
     }
-    throw lastError ?? new Error('No Gemini model available for this key.');
   }
 
   private post(model: string, signal?: AbortSignal): Promise<Response> {
     const body = JSON.stringify({
-      contents: this.history,
-      systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+      contents: this.compact(),
+      // The live state rides in the system instruction, not the history: it is
+      // rebuilt every request, so it is never stale and never accumulates.
+      systemInstruction: { parts: [{ text: `${SYSTEM_PROMPT}\n\n${liveContext()}` }] },
       tools: [{ functionDeclarations: TOOL_DECLARATIONS }],
       toolConfig: { functionCallingConfig: { mode: 'AUTO' } },
       generationConfig: { temperature: 0.4, topP: 0.95, maxOutputTokens: 1024 },
@@ -171,6 +292,32 @@ export class AgentSession {
     );
   }
 
+  /**
+   * The history as it goes on the wire. Tool results are by far the biggest
+   * thing in it and the least useful once acted on — the live state block
+   * already carries anything still true — so older ones are replaced by a
+   * marker rather than re-uploaded every turn.
+   */
+  private compact(): Content[] {
+    const cutoff = this.history.length - KEEP_FULL_RESULTS;
+    return this.history.map((content, index) => {
+      if (index >= cutoff || !hasFunctionResponse(content)) return content;
+      return {
+        ...content,
+        parts: content.parts.map((part) =>
+          'functionResponse' in part
+            ? {
+                functionResponse: {
+                  name: part.functionResponse.name,
+                  response: { note: 'earlier result — see the live state block for current values' },
+                },
+              }
+            : part,
+        ),
+      };
+    });
+  }
+
   private trim() {
     if (this.history.length <= MAX_HISTORY) return;
     // Never start the kept window on a function response — it would reference a
@@ -186,17 +333,15 @@ function hasFunctionResponse(content: Content): boolean {
 }
 
 /** Reads the SSE body, emitting text as it lands and collecting tool calls. */
-async function consume(
-  response: Response,
-  onText?: (delta: string) => void,
-): Promise<{ text: string; calls: { name: string; args: Record<string, unknown> }[] }> {
+async function consume(response: Response, onText?: (delta: string) => void): Promise<StreamOutcome> {
   const reader = response.body?.getReader();
   if (!reader) throw new Error('Gemini returned an empty response body.');
 
   const decoder = new TextDecoder();
   let buffer = '';
   let text = '';
-  const calls: { name: string; args: Record<string, unknown> }[] = [];
+  const calls: FunctionCall[] = [];
+  const parts: Part[] = [];
 
   for (;;) {
     const { done, value } = await reader.read();
@@ -224,6 +369,7 @@ async function consume(
         continue;
       }
       for (const part of partsOf(parsed)) {
+        parts.push(part);
         if ('text' in part && typeof part.text === 'string') {
           text += part.text;
           onText?.(part.text);
@@ -231,13 +377,21 @@ async function consume(
           calls.push({
             name: part.functionCall.name,
             args: (part.functionCall.args ?? {}) as Record<string, unknown>,
+            id: part.functionCall.id,
           });
         }
       }
     }
   }
-  return { text, calls };
+  return { text, calls, parts };
 }
+
+type StreamOutcome = {
+  text: string;
+  calls: FunctionCall[];
+  /** Exactly what the model sent, for replaying into the history. */
+  parts: Part[];
+};
 
 type StreamChunk = {
   candidates?: { content?: { parts?: Part[] } }[];
