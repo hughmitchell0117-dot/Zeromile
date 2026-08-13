@@ -145,6 +145,22 @@ export class TourOptimizer {
   iterations = 0;
   /** 0 → 1 across the configured annealing budget. */
   progress = 0;
+  /**
+   * Per-operator tally, so the console can show what the search actually did
+   * rather than the fixed odds in `chooseMove`. `proposed` counts moves the
+   * dispatcher picked; `accepted` counts the ones that survived the Metropolis
+   * test. A move that bails before scoring (empty pool, illegal tour, locked
+   * leg) is proposed but never accepted, which is exactly the story worth
+   * telling: most of the search is rejected.
+   */
+  readonly moves: Record<Move, { proposed: number; accepted: number }> = {
+    insert: { proposed: 0, accepted: 0 },
+    remove: { proposed: 0, accepted: 0 },
+    relocate: { proposed: 0, accepted: 0 },
+    swap: { proposed: 0, accepted: 0 },
+    reorder: { proposed: 0, accepted: 0 },
+  };
+  private currentMove: Move = 'insert';
   private budget: number;
   private lockedLoadIds = new Set<number>();
   private lockedDriverId: number | null;
@@ -206,8 +222,9 @@ export class TourOptimizer {
   }
 
   private accept(delta: number, temp: number): boolean {
-    if (delta > 0) return true;
-    return this.rand() < Math.exp(delta / temp);
+    const ok = delta > 0 ? true : this.rand() < Math.exp(delta / temp);
+    if (ok) this.moves[this.currentMove].accepted++;
+    return ok;
   }
 
   private score(tour: Tour): number {
@@ -278,8 +295,11 @@ export class TourOptimizer {
       if (this.iterations >= this.budget) break;
       this.iterations++;
       const temp = this.temperature();
+      const move = this.chooseMove();
+      this.currentMove = move;
+      this.moves[move].proposed++;
 
-      switch (this.chooseMove()) {
+      switch (move) {
         case 'insert':
           this.tryInsert(temp);
           break;

@@ -154,7 +154,12 @@ type FeedEvent = {
  * started — the chart is plotted against `t`, so the trace sweeps at the speed
  * the solve is actually happening.
  */
-type SolvePoint = { p: number; t: number; empty: number; net: number };
+export type SolvePoint = { p: number; t: number; empty: number; net: number };
+
+export type MoveTally = Record<
+  'insert' | 'remove' | 'relocate' | 'swap' | 'reorder',
+  { proposed: number; accepted: number }
+>;
 
 /** Annealing narrative — surfaced in the feed as the temperature falls. */
 const SOLVE_MILESTONES = [
@@ -292,6 +297,14 @@ export type DemoResult = {
   alternatives: Tour[];
   config: DemoConfig;
   route: RouteInput | null;
+  /**
+   * The solved fleet and the trace behind it. The methodology section draws
+   * its charts from these — the same tours the map is showing, not a mock-up.
+   */
+  tours: Tour[];
+  history: SolvePoint[];
+  moves: MoveTally | null;
+  solveMs: number;
 };
 
 export default function DemoConsole({
@@ -475,6 +488,10 @@ export default function DemoConsole({
         alternatives,
         config,
         route: appliedRoute,
+        tours,
+        history,
+        moves: optRef.current ? { ...optRef.current.moves } : null,
+        solveMs,
       });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -685,6 +702,10 @@ export default function DemoConsole({
       optStats: null,
       showcase: null,
       alternatives: [],
+      tours: [],
+      history: [],
+      moves: null,
+      solveMs: 0,
       config,
       route: appliedRoute,
     });
