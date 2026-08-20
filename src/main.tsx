@@ -7,9 +7,12 @@ import './styles/redesign.css'
 // The agent floats above everything and borrows the redesign layer's tokens.
 import './styles/agent.css'
 import App from './App.tsx'
+import ErrorBoundary from './components/ErrorBoundary.tsx'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <App />
+    <ErrorBoundary>
+      <App />
+    </ErrorBoundary>
   </StrictMode>,
 )
