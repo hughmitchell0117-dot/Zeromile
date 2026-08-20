@@ -1271,9 +1271,30 @@ export default function KoreaMap({
     if (map.isStyleLoaded()) init();
     else map.on('style.load', init);
 
+    // A dropped GL context is what kills a long session: the browser reclaims
+    // it after sleep, a long spell in a background tab, or GPU pressure from
+    // other tabs, and every effect that then writes to the map throws. Left
+    // uncaught that used to take the whole page down with it. Dropping `ready`
+    // gates all of them until the context is back.
+    const canvas = map.getCanvas();
+    const onLost = (e: Event) => {
+      // The default is "gone for good"; prevented, the browser hands it back.
+      e.preventDefault();
+      setReady(false);
+    };
+    const onRestored = () => {
+      // MapLibre rebuilds its own painter from the style it still holds, so
+      // the layers survive — only the effects that feed them need waking.
+      setReady(true);
+    };
+    canvas.addEventListener('webglcontextlost', onLost);
+    canvas.addEventListener('webglcontextrestored', onRestored);
+
     mapRef.current = map;
     return () => {
       setReady(false);
+      canvas.removeEventListener('webglcontextlost', onLost);
+      canvas.removeEventListener('webglcontextrestored', onRestored);
       map.remove();
       mapRef.current = null;
     };
@@ -1309,6 +1330,8 @@ export default function KoreaMap({
     }
 
     const tick = () => {
+      // Same reasoning as the dash loop: hidden tab, no paint writes.
+      if (document.hidden) return;
       const now = performance.now();
 
       const k = Math.min(1, (now - t0) / FADE_MS);
@@ -1447,6 +1470,10 @@ export default function KoreaMap({
     ];
     let i = 0;
     const timer = setInterval(() => {
+      // Nothing to animate for a tab nobody is looking at, and writing to a
+      // map whose context the browser may have reclaimed is how a backgrounded
+      // session comes back broken.
+      if (document.hidden) return;
       i = (i + 1) % STEPS.length;
       if (map.getLayer('flow-pulse')) {
         map.setPaintProperty('flow-pulse', 'line-dasharray', STEPS[i]);

@@ -475,3 +475,59 @@
     animation: none;
   }
 }
+
+/* ── Crash card ───────────────────────────────────────────────────────────
+ * The last thing standing when the tree comes down, so it leans on nothing
+ * the app might have failed to set up.
+ */
+.zm-crash {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(var(--scrim-rgb), 0.96);
+}
+
+.zm-crash-card {
+  width: min(420px, 100%);
+  padding: 28px;
+  border-radius: 22px;
+  border: 1px solid rgba(var(--wash-rgb), 0.13);
+  background: rgba(var(--well-rgb), 0.9);
+  text-align: center;
+}
+
+.zm-crash-title {
+  margin: 0 0 8px;
+  font-size: 17px;
+  font-weight: 620;
+  color: var(--ink-1);
+}
+
+.zm-crash-body {
+  margin: 0 0 18px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--ink-3);
+}
+
+.zm-crash-card button {
+  padding: 10px 22px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--yellow);
+  color: var(--kakao-brown);
+  font: inherit;
+  font-weight: 620;
+  cursor: pointer;
+}
+
+.zm-crash-detail {
+  margin: 16px 0 0;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--ink-4);
+  word-break: break-word;
+}
